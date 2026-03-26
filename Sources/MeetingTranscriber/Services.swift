@@ -811,16 +811,19 @@ final class PipelineProcessor: ObservableObject {
         let vocab = settingsStore.settings.customVocabulary
         if !vocab.isEmpty {
             // Custom vocabulary requires CTC models — skip if not available
-            // The spec says min 4 chars, max 50 terms (already enforced in UI)
+            // Min 3 chars, max 50 terms (enforced in UI)
         }
 
+        // Minimum 16,000 samples (1 second at 16kHz) required by Parakeet
+        let minSamples = 16_000
+
         // Transcribe app track (remote participants)
-        if let track = appTrack {
+        if let track = appTrack, track.samples.count >= minSamples {
             appTranscription = try await asrManager.transcribe(track.samples, source: .system)
         }
 
         // Transcribe mic track (local user)
-        if let track = micTrack {
+        if let track = micTrack, track.samples.count >= minSamples {
             micTranscription = try await asrManager.transcribe(track.samples, source: .microphone)
         }
 
@@ -830,16 +833,27 @@ final class PipelineProcessor: ObservableObject {
     // MARK: - Stage 3: Diarization (LS-EEND + WeSpeaker)
 
     private func runDiarization(_ job: PipelineJob) async throws {
+        // Diarization needs meaningful audio (at least a few seconds)
+        let minSamples = 16_000 * 2 // 2 seconds at 16kHz
+
+        let hasAppAudio = appTrack.map { $0.samples.count >= minSamples } ?? false
+        let hasMicAudio = micTrack.map { $0.samples.count >= minSamples } ?? false
+
+        guard hasAppAudio || hasMicAudio else {
+            // Too short for diarization — skip, speaker assignment will use defaults
+            return
+        }
+
         let diarizer = OfflineDiarizerManager()
         try await diarizer.prepareModels()
 
         // Diarize app track (may have multiple remote speakers)
-        if let track = appTrack {
+        if hasAppAudio, let track = appTrack {
             appDiarization = try await diarizer.process(audio: track.samples)
         }
 
         // Diarize mic track (expect 1 speaker = local user)
-        if let track = micTrack {
+        if hasMicAudio, let track = micTrack {
             micDiarization = try await diarizer.process(audio: track.samples)
         }
 

@@ -297,10 +297,10 @@ struct SettingsView: View {
                 .font(.headline)
 
             HStack {
-                TextField("Add a term (min 4 chars)", text: $model.vocabularyDraft)
+                TextField("Add a term (min 3 chars)", text: $model.vocabularyDraft)
                     .onSubmit { model.addVocabularyTerm() }
                 Button("Add") { model.addVocabularyTerm() }
-                    .disabled(model.vocabularyDraft.trimmingCharacters(in: .whitespacesAndNewlines).count < 4)
+                    .disabled(model.vocabularyDraft.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
             }
 
             if model.settingsStore.settings.customVocabulary.isEmpty {
