@@ -197,6 +197,7 @@ public final class AppModel: ObservableObject {
 
     public func removeVocabularyTerm(_ term: String) {
         settingsStore.settings.customVocabulary.removeAll { $0 == term }
+        objectWillChange.send()
     }
 
     public func setLaunchAtLogin(_ enabled: Bool) {
