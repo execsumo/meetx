@@ -572,6 +572,9 @@ enum TranscriptWriter {
 
 // MARK: - Pipeline Processor
 
+/// Processes recorded meetings through: preprocessing → transcription → diarization → speaker assignment → output.
+/// Jobs are processed sequentially (one at a time) to avoid ANE contention.
+/// Failed stages retry up to 3 times with exponential backoff (5s, 30s, 5min).
 @MainActor
 final class PipelineProcessor: ObservableObject {
     @Published private(set) var isProcessing = false
@@ -581,6 +584,14 @@ final class PipelineProcessor: ObservableObject {
     private let settingsStore: SettingsStore
     private let modelCatalog: ModelCatalog
     private let onNamingRequired: @MainActor ([NamingCandidate]) -> Void
+
+    /// In-memory preprocessed tracks for the current job (not persisted).
+    private var appTrack: PreprocessedTrack?
+    private var micTrack: PreprocessedTrack?
+
+    /// Retry backoff intervals in seconds.
+    private static let retryDelays: [TimeInterval] = [5, 30, 300]
+    private static let maxRetries = 3
 
     init(
         queueStore: PipelineQueueStore,
@@ -624,74 +635,202 @@ final class PipelineProcessor: ObservableObject {
 
     func runNextIfNeeded() {
         guard !isProcessing else { return }
-        guard let next = queueStore.jobs.first(where: { $0.stage == .queued || $0.stage == .failed }) else { return }
+        guard let next = queueStore.jobs.first(where: { $0.stage == .queued }) else { return }
         isProcessing = true
         Task {
-            await process(next)
+            await processWithRetry(next)
             await MainActor.run {
                 self.isProcessing = false
+                self.appTrack = nil
+                self.micTrack = nil
                 self.runNextIfNeeded()
             }
         }
     }
 
-    private func process(_ job: PipelineJob) async {
-        do {
-            var working = job
-            try await advance(&working, to: .preprocessing)
-            modelCatalog.markDownloading(.batchVad)
-            modelCatalog.markReady(.batchVad)
+    // MARK: - Retry Logic
 
-            try await advance(&working, to: .transcribing)
-            modelCatalog.markDownloading(.batchParakeet)
-            modelCatalog.markReady(.batchParakeet)
+    private func processWithRetry(_ job: PipelineJob) async {
+        var working = job
+        for attempt in 0..<Self.maxRetries {
+            do {
+                try await process(&working)
+                return // Success
+            } catch is CancellationError {
+                return
+            } catch {
+                working.error = error.localizedDescription
+                working.retryCount = attempt + 1
+                queueStore.update(working)
 
-            try await advance(&working, to: .diarizing)
-            modelCatalog.markDownloading(.diarization)
-            modelCatalog.markReady(.diarization)
+                if attempt < Self.maxRetries - 1 {
+                    let delay = Self.retryDelays[min(attempt, Self.retryDelays.count - 1)]
+                    NSLog("MeetingTranscriber: Pipeline stage \(working.stage.rawValue) failed (attempt \(attempt + 1)), retrying in \(Int(delay))s: \(error)")
+                    try? await Task.sleep(for: .seconds(delay))
+                } else {
+                    NSLog("MeetingTranscriber: Pipeline exhausted retries for job \(working.id): \(error)")
+                    working.stage = .failed
+                    queueStore.update(working)
+                }
+            }
+        }
+    }
 
-            try await advance(&working, to: .assigning)
-            let transcript = buildTranscript(for: working)
-            let outputDirectory = URL(fileURLWithPath: settingsStore.settings.outputDirectory, isDirectory: true)
-            let outputURL = try TranscriptWriter.write(document: transcript, outputDirectory: outputDirectory)
-            working.transcriptPath = outputURL
-            working.stage = .complete
-            working.stageStartTime = nil
-            queueStore.update(working)
+    // MARK: - Pipeline Stages
 
+    private func process(_ job: inout PipelineJob) async throws {
+
+        // Stage 1: Preprocessing — load WAV, downmix, resample to 16kHz, VAD trim
+        if job.stage == .queued || job.stage == .preprocessing {
+            try await advanceTo(&job, stage: .preprocessing)
+            try await runPreprocessing(job)
+        }
+
+        // Stage 2: Transcription — run Parakeet TDT on both tracks
+        if job.stage == .preprocessing || job.stage == .transcribing {
+            try await advanceTo(&job, stage: .transcribing)
+            try await runTranscription(job)
+        }
+
+        // Stage 3: Diarization — run LS-EEND + WeSpeaker on both tracks
+        if job.stage == .transcribing || job.stage == .diarizing {
+            try await advanceTo(&job, stage: .diarizing)
+            try await runDiarization(job)
+        }
+
+        // Stage 4: Speaker Assignment — merge transcription + diarization
+        if job.stage == .diarizing || job.stage == .assigning {
+            try await advanceTo(&job, stage: .assigning)
+            let transcript = try await runSpeakerAssignment(job)
+
+            // Stage 5: Output
+            let outputDirectory = URL(
+                fileURLWithPath: settingsStore.settings.outputDirectory,
+                isDirectory: true
+            )
+            let outputURL = try TranscriptWriter.write(
+                document: transcript,
+                outputDirectory: outputDirectory
+            )
+            job.transcriptPath = outputURL
+            job.stage = .complete
+            job.stageStartTime = nil
+            job.error = nil
+            queueStore.update(job)
+
+            // Prompt for unmatched speakers
             let unmatched = transcript.participants.filter { $0.hasPrefix("Speaker ") }
             if !unmatched.isEmpty {
                 onNamingRequired(unmatched.map {
                     NamingCandidate(id: UUID(), temporaryName: $0, suggestedName: nil)
                 })
             }
-        } catch {
-            var failed = job
-            failed.stage = .failed
-            failed.error = error.localizedDescription
-            failed.retryCount += 1
-            queueStore.update(failed)
         }
     }
 
-    private func advance(_ job: inout PipelineJob, to stage: PipelineStage) async throws {
+    private func advanceTo(_ job: inout PipelineJob, stage: PipelineStage) async throws {
         job.stage = stage
         job.stageStartTime = Date()
         job.error = nil
         queueStore.update(job)
-        // TODO: Replace with real pipeline stage execution
-        try await Task.sleep(for: .milliseconds(250))
     }
 
-    private func buildTranscript(for job: PipelineJob) -> TranscriptDocument {
-        // TODO: Replace with real transcription + diarization output
+    // MARK: - Stage 1: Preprocessing
+
+    private func runPreprocessing(_ job: PipelineJob) async throws {
+        // Preprocess app track (stereo → mono → 16kHz → VAD)
+        let appExists = FileManager.default.fileExists(atPath: job.appAudioPath.path)
+        if appExists {
+            appTrack = try await Task.detached(priority: .userInitiated) {
+                try await AudioPreprocessor.preprocess(wavURL: job.appAudioPath, isStereo: true)
+            }.value
+        }
+
+        // Preprocess mic track (mono → 16kHz → VAD)
+        let micExists = FileManager.default.fileExists(atPath: job.micAudioPath.path)
+        if micExists {
+            micTrack = try await Task.detached(priority: .userInitiated) {
+                try await AudioPreprocessor.preprocess(wavURL: job.micAudioPath, isStereo: false)
+            }.value
+        }
+
+        guard appTrack != nil || micTrack != nil else {
+            throw PipelineError.noAudioFiles
+        }
+    }
+
+    // MARK: - Stage 2: Transcription (CoreML seam)
+
+    private func runTranscription(_ job: PipelineJob) async throws {
+        // TODO: Load Parakeet TDT V2 CoreML model and transcribe both tracks.
+        // For now, generate placeholder segments from the preprocessed audio duration.
+        // When real model is integrated:
+        //   1. Load model from ~/Library/Application Support/MeetingTranscriber/Models/parakeet-tdt-0.6b-v2/
+        //   2. Run inference on appTrack.samples and micTrack.samples
+        //   3. Remap timestamps through vadMap.toOriginalTime()
+        //   4. Store results for speaker assignment stage
+
+        // Placeholder: sleep briefly to simulate processing time
+        try await Task.sleep(for: .milliseconds(100))
+    }
+
+    // MARK: - Stage 3: Diarization (CoreML seam)
+
+    private func runDiarization(_ job: PipelineJob) async throws {
+        // TODO: Load LS-EEND + WeSpeaker CoreML models and diarize both tracks.
+        // When real models are integrated:
+        //   1. Run LS-EEND on appTrack for speaker segmentation
+        //   2. Run LS-EEND on micTrack (expect 1 speaker = local user)
+        //   3. Extract WeSpeaker embeddings for each detected speaker
+        //   4. Remap timestamps through vadMap.toOriginalTime()
+        //   5. Prefix app speakers with R_, mic speakers with M_
+        //   6. Merge into unified timeline
+
+        try await Task.sleep(for: .milliseconds(100))
+    }
+
+    // MARK: - Stage 4: Speaker Assignment
+
+    private func runSpeakerAssignment(_ job: PipelineJob) async throws -> TranscriptDocument {
+        // TODO: Match transcription segments to diarization segments by temporal overlap.
+        // When real pipeline is complete:
+        //   1. For each transcript segment, find diarization segment with max overlap
+        //   2. Assign speaker label from matched diarization segment
+        //   3. Look up speaker in speaker database by embedding cosine distance
+        //   4. Merge consecutive segments from same speaker
+        //   5. Apply mic delay offset for alignment
+
+        // Placeholder: generate sample transcript from preprocessed data
         let me = settingsStore.settings.userName.isEmpty ? "Me" : settingsStore.settings.userName
         let remote = speakerStore.speakers.first?.name ?? "Speaker 1"
-        let segments = [
-            TranscriptSegment(speaker: me, startTime: 0, endTime: 4, text: "Started the discussion and set context for the meeting."),
-            TranscriptSegment(speaker: remote, startTime: 5, endTime: 10, text: "Shared updates and open questions from the remote track."),
-            TranscriptSegment(speaker: me, startTime: 12, endTime: 18, text: "Summarized next steps and assigned follow-up actions."),
-        ]
+
+        let appDuration = appTrack?.duration ?? 0
+        let micDuration = micTrack?.duration ?? 0
+        let totalDuration = max(appDuration, micDuration)
+
+        // Generate segments spaced across the recording duration
+        var segments: [TranscriptSegment] = []
+        if totalDuration > 0 {
+            let interval = max(totalDuration / 6, 5)
+            var t: TimeInterval = 0
+            var speakerToggle = true
+            while t < totalDuration {
+                let speaker = speakerToggle ? me : remote
+                segments.append(TranscriptSegment(
+                    speaker: speaker,
+                    startTime: t,
+                    endTime: min(t + interval, totalDuration),
+                    text: "[Transcription pending — CoreML model integration required]"
+                ))
+                t += interval
+                speakerToggle.toggle()
+            }
+        } else {
+            // No audio was preprocessed — use static placeholder
+            segments = [
+                TranscriptSegment(speaker: me, startTime: 0, endTime: 4, text: "[No audio captured for this meeting]"),
+            ]
+        }
 
         return TranscriptDocument(
             title: job.meetingTitle.isEmpty ? "Meeting" : job.meetingTitle,
@@ -700,5 +839,15 @@ final class PipelineProcessor: ObservableObject {
             participants: Array(Set(segments.map(\.speaker))).sorted(),
             segments: segments
         )
+    }
+}
+
+enum PipelineError: LocalizedError {
+    case noAudioFiles
+
+    var errorDescription: String? {
+        switch self {
+        case .noAudioFiles: return "No audio files found for this recording"
+        }
     }
 }

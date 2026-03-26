@@ -19,6 +19,7 @@ final class AppModel: ObservableObject {
     let modelCatalog: ModelCatalog
     let permissionCenter: PermissionCenter
     let recordingManager: RecordingManager
+    let downloadManager: ModelDownloadManager
     var pipelineProcessor: PipelineProcessor! = nil
     var meetingDetector: MeetingDetector! = nil
 
@@ -32,13 +33,16 @@ final class AppModel: ObservableObject {
         let permissionCenter = PermissionCenter()
         let recordingManager = RecordingManager()
 
+        let downloadManager = ModelDownloadManager(catalog: modelCatalog)
+
         let model = AppModel(
             settingsStore: settingsStore,
             speakerStore: speakerStore,
             queueStore: queueStore,
             modelCatalog: modelCatalog,
             permissionCenter: permissionCenter,
-            recordingManager: recordingManager
+            recordingManager: recordingManager,
+            downloadManager: downloadManager
         )
 
         // Clean stale recordings (>48h), preserving files referenced by active jobs
@@ -68,7 +72,8 @@ final class AppModel: ObservableObject {
         queueStore: PipelineQueueStore,
         modelCatalog: ModelCatalog,
         permissionCenter: PermissionCenter,
-        recordingManager: RecordingManager
+        recordingManager: RecordingManager,
+        downloadManager: ModelDownloadManager
     ) {
         self.settingsStore = settingsStore
         self.speakerStore = speakerStore
@@ -76,6 +81,7 @@ final class AppModel: ObservableObject {
         self.modelCatalog = modelCatalog
         self.permissionCenter = permissionCenter
         self.recordingManager = recordingManager
+        self.downloadManager = downloadManager
 
         self.pipelineProcessor = PipelineProcessor(
             queueStore: queueStore,

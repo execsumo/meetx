@@ -78,6 +78,16 @@ struct MenuBarView: View {
                 Button("Open Protocols Folder") {
                     model.openOutputDirectory()
                 }
+
+                Divider()
+
+                SettingsLink {
+                    Text("Settings...")
+                }
+
+                Button("Quit") {
+                    NSApplication.shared.terminate(nil)
+                }
             }
         }
         .padding(16)
@@ -144,8 +154,26 @@ struct SettingsView: View {
                     HStack {
                         Text(item.modelKind.displayName)
                         Spacer()
-                        Text(item.detail)
-                            .foregroundStyle(item.availability == .ready ? .green : .secondary)
+                        if let progress = model.downloadManager.downloadProgress[item.modelKind] {
+                            ProgressView(value: progress)
+                                .frame(width: 100)
+                            Text("\(Int(progress * 100))%")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        } else if let error = model.downloadManager.errors[item.modelKind] {
+                            Text(error)
+                                .foregroundStyle(.red)
+                                .lineLimit(1)
+                        } else {
+                            Text(item.detail)
+                                .foregroundStyle(item.availability == .ready ? .green : .secondary)
+                        }
+                    }
+                }
+
+                if !model.downloadManager.allModelsReady {
+                    Button("Download Models") {
+                        model.downloadManager.downloadAllModels()
                     }
                 }
             }
