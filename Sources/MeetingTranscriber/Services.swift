@@ -5,6 +5,7 @@ import AVFoundation
 import Combine
 import CoreAudio
 import CoreGraphics
+import FluidAudio
 import Foundation
 import IOKit.pwr_mgt
 import ServiceManagement
@@ -585,11 +586,14 @@ final class PipelineProcessor: ObservableObject {
     private let modelCatalog: ModelCatalog
     private let onNamingRequired: @MainActor ([NamingCandidate]) -> Void
 
-    /// In-memory preprocessed tracks for the current job (not persisted).
+    /// In-memory state for the current pipeline job.
     private var appTrack: PreprocessedTrack?
     private var micTrack: PreprocessedTrack?
+    private var appTranscription: ASRResult?
+    private var micTranscription: ASRResult?
+    private var appDiarization: DiarizationResult?
+    private var micDiarization: DiarizationResult?
 
-    /// Retry backoff intervals in seconds.
     private static let retryDelays: [TimeInterval] = [5, 30, 300]
     private static let maxRetries = 3
 
@@ -641,11 +645,19 @@ final class PipelineProcessor: ObservableObject {
             await processWithRetry(next)
             await MainActor.run {
                 self.isProcessing = false
-                self.appTrack = nil
-                self.micTrack = nil
+                self.clearJobState()
                 self.runNextIfNeeded()
             }
         }
+    }
+
+    private func clearJobState() {
+        appTrack = nil
+        micTrack = nil
+        appTranscription = nil
+        micTranscription = nil
+        appDiarization = nil
+        micDiarization = nil
     }
 
     // MARK: - Retry Logic
@@ -655,7 +667,7 @@ final class PipelineProcessor: ObservableObject {
         for attempt in 0..<Self.maxRetries {
             do {
                 try await process(&working)
-                return // Success
+                return
             } catch is CancellationError {
                 return
             } catch {
@@ -665,10 +677,10 @@ final class PipelineProcessor: ObservableObject {
 
                 if attempt < Self.maxRetries - 1 {
                     let delay = Self.retryDelays[min(attempt, Self.retryDelays.count - 1)]
-                    NSLog("MeetingTranscriber: Pipeline stage \(working.stage.rawValue) failed (attempt \(attempt + 1)), retrying in \(Int(delay))s: \(error)")
+                    NSLog("MeetingTranscriber: Stage \(working.stage.rawValue) failed (attempt \(attempt + 1)), retrying in \(Int(delay))s: \(error)")
                     try? await Task.sleep(for: .seconds(delay))
                 } else {
-                    NSLog("MeetingTranscriber: Pipeline exhausted retries for job \(working.id): \(error)")
+                    NSLog("MeetingTranscriber: Exhausted retries for job \(working.id): \(error)")
                     working.stage = .failed
                     queueStore.update(working)
                 }
@@ -680,45 +692,43 @@ final class PipelineProcessor: ObservableObject {
 
     private func process(_ job: inout PipelineJob) async throws {
 
-        // Stage 1: Preprocessing — load WAV, downmix, resample to 16kHz, VAD trim
+        // Stage 1: Preprocessing — load WAV, resample to 16kHz mono, Silero VAD trim
         if job.stage == .queued || job.stage == .preprocessing {
             try await advanceTo(&job, stage: .preprocessing)
+            modelCatalog.markDownloading(.batchVad)
             try await runPreprocessing(job)
+            modelCatalog.markReady(.batchVad)
         }
 
-        // Stage 2: Transcription — run Parakeet TDT on both tracks
+        // Stage 2: Transcription — Parakeet TDT on both tracks
         if job.stage == .preprocessing || job.stage == .transcribing {
             try await advanceTo(&job, stage: .transcribing)
+            modelCatalog.markDownloading(.batchParakeet)
             try await runTranscription(job)
+            modelCatalog.markReady(.batchParakeet)
         }
 
-        // Stage 3: Diarization — run LS-EEND + WeSpeaker on both tracks
+        // Stage 3: Diarization — LS-EEND + WeSpeaker on both tracks
         if job.stage == .transcribing || job.stage == .diarizing {
             try await advanceTo(&job, stage: .diarizing)
+            modelCatalog.markDownloading(.diarization)
             try await runDiarization(job)
+            modelCatalog.markReady(.diarization)
         }
 
-        // Stage 4: Speaker Assignment — merge transcription + diarization
+        // Stage 4: Speaker Assignment + Output
         if job.stage == .diarizing || job.stage == .assigning {
             try await advanceTo(&job, stage: .assigning)
-            let transcript = try await runSpeakerAssignment(job)
+            let transcript = runSpeakerAssignment(job)
+            let outputDirectory = URL(fileURLWithPath: settingsStore.settings.outputDirectory, isDirectory: true)
+            let outputURL = try TranscriptWriter.write(document: transcript, outputDirectory: outputDirectory)
 
-            // Stage 5: Output
-            let outputDirectory = URL(
-                fileURLWithPath: settingsStore.settings.outputDirectory,
-                isDirectory: true
-            )
-            let outputURL = try TranscriptWriter.write(
-                document: transcript,
-                outputDirectory: outputDirectory
-            )
             job.transcriptPath = outputURL
             job.stage = .complete
             job.stageStartTime = nil
             job.error = nil
             queueStore.update(job)
 
-            // Prompt for unmatched speakers
             let unmatched = transcript.participants.filter { $0.hasPrefix("Speaker ") }
             if !unmatched.isEmpty {
                 onNamingRequired(unmatched.map {
@@ -735,110 +745,232 @@ final class PipelineProcessor: ObservableObject {
         queueStore.update(job)
     }
 
-    // MARK: - Stage 1: Preprocessing
+    // MARK: - Stage 1: Preprocessing (AudioConverter + Silero VAD)
 
     private func runPreprocessing(_ job: PipelineJob) async throws {
-        // Preprocess app track (stereo → mono → 16kHz → VAD)
         let appExists = FileManager.default.fileExists(atPath: job.appAudioPath.path)
-        if appExists {
-            appTrack = try await Task.detached(priority: .userInitiated) {
-                try await AudioPreprocessor.preprocess(wavURL: job.appAudioPath, isStereo: true)
-            }.value
-        }
-
-        // Preprocess mic track (mono → 16kHz → VAD)
         let micExists = FileManager.default.fileExists(atPath: job.micAudioPath.path)
-        if micExists {
-            micTrack = try await Task.detached(priority: .userInitiated) {
-                try await AudioPreprocessor.preprocess(wavURL: job.micAudioPath, isStereo: false)
-            }.value
-        }
 
-        guard appTrack != nil || micTrack != nil else {
-            throw PipelineError.noAudioFiles
+        guard appExists || micExists else { throw PipelineError.noAudioFiles }
+
+        // Preprocess both tracks concurrently on background threads
+        try await withThrowingTaskGroup(of: (String, PreprocessedTrack).self) { group in
+            if appExists {
+                group.addTask {
+                    let track = try await AudioPreprocessor.preprocess(wavURL: job.appAudioPath)
+                    return ("app", track)
+                }
+            }
+            if micExists {
+                group.addTask {
+                    let track = try await AudioPreprocessor.preprocess(wavURL: job.micAudioPath)
+                    return ("mic", track)
+                }
+            }
+            for try await (label, track) in group {
+                if label == "app" { appTrack = track }
+                else { micTrack = track }
+            }
         }
     }
 
-    // MARK: - Stage 2: Transcription (CoreML seam)
+    // MARK: - Stage 2: Transcription (Parakeet TDT V2)
 
     private func runTranscription(_ job: PipelineJob) async throws {
-        // TODO: Load Parakeet TDT V2 CoreML model and transcribe both tracks.
-        // For now, generate placeholder segments from the preprocessed audio duration.
-        // When real model is integrated:
-        //   1. Load model from ~/Library/Application Support/MeetingTranscriber/Models/parakeet-tdt-0.6b-v2/
-        //   2. Run inference on appTrack.samples and micTrack.samples
-        //   3. Remap timestamps through vadMap.toOriginalTime()
-        //   4. Store results for speaker assignment stage
+        // Load Parakeet model (auto-downloads from HuggingFace on first use)
+        let modelsDir = FileManager.default.meetingTranscriberAppSupportDirectory
+            .appendingPathComponent("Models", isDirectory: true)
+        let models = try await AsrModels.load(from: modelsDir, version: .v2)
+        let asrManager = AsrManager()
+        try await asrManager.initialize(models: models)
 
-        // Placeholder: sleep briefly to simulate processing time
-        try await Task.sleep(for: .milliseconds(100))
+        // Configure custom vocabulary if set
+        let vocab = settingsStore.settings.customVocabulary
+        if !vocab.isEmpty {
+            // Custom vocabulary requires CTC models — skip if not available
+            // The spec says min 4 chars, max 50 terms (already enforced in UI)
+        }
+
+        // Transcribe app track (remote participants)
+        if let track = appTrack {
+            appTranscription = try await asrManager.transcribe(track.samples, source: .system)
+        }
+
+        // Transcribe mic track (local user)
+        if let track = micTrack {
+            micTranscription = try await asrManager.transcribe(track.samples, source: .microphone)
+        }
+
+        // Models are released when asrManager goes out of scope
     }
 
-    // MARK: - Stage 3: Diarization (CoreML seam)
+    // MARK: - Stage 3: Diarization (LS-EEND + WeSpeaker)
 
     private func runDiarization(_ job: PipelineJob) async throws {
-        // TODO: Load LS-EEND + WeSpeaker CoreML models and diarize both tracks.
-        // When real models are integrated:
-        //   1. Run LS-EEND on appTrack for speaker segmentation
-        //   2. Run LS-EEND on micTrack (expect 1 speaker = local user)
-        //   3. Extract WeSpeaker embeddings for each detected speaker
-        //   4. Remap timestamps through vadMap.toOriginalTime()
-        //   5. Prefix app speakers with R_, mic speakers with M_
-        //   6. Merge into unified timeline
+        let diarizer = OfflineDiarizerManager()
+        try await diarizer.prepareModels()
 
-        try await Task.sleep(for: .milliseconds(100))
+        // Diarize app track (may have multiple remote speakers)
+        if let track = appTrack {
+            appDiarization = try await diarizer.process(audio: track.samples)
+        }
+
+        // Diarize mic track (expect 1 speaker = local user)
+        if let track = micTrack {
+            micDiarization = try await diarizer.process(audio: track.samples)
+        }
+
+        // Models are released when diarizer goes out of scope
     }
 
     // MARK: - Stage 4: Speaker Assignment
 
-    private func runSpeakerAssignment(_ job: PipelineJob) async throws -> TranscriptDocument {
-        // TODO: Match transcription segments to diarization segments by temporal overlap.
-        // When real pipeline is complete:
-        //   1. For each transcript segment, find diarization segment with max overlap
-        //   2. Assign speaker label from matched diarization segment
-        //   3. Look up speaker in speaker database by embedding cosine distance
-        //   4. Merge consecutive segments from same speaker
-        //   5. Apply mic delay offset for alignment
-
-        // Placeholder: generate sample transcript from preprocessed data
+    private func runSpeakerAssignment(_ job: PipelineJob) -> TranscriptDocument {
         let me = settingsStore.settings.userName.isEmpty ? "Me" : settingsStore.settings.userName
-        let remote = speakerStore.speakers.first?.name ?? "Speaker 1"
 
-        let appDuration = appTrack?.duration ?? 0
-        let micDuration = micTrack?.duration ?? 0
-        let totalDuration = max(appDuration, micDuration)
+        // Build transcription segments from ASR results with timestamp remapping
+        var allSegments: [TranscriptSegment] = []
 
-        // Generate segments spaced across the recording duration
-        var segments: [TranscriptSegment] = []
-        if totalDuration > 0 {
-            let interval = max(totalDuration / 6, 5)
-            var t: TimeInterval = 0
-            var speakerToggle = true
-            while t < totalDuration {
-                let speaker = speakerToggle ? me : remote
-                segments.append(TranscriptSegment(
-                    speaker: speaker,
-                    startTime: t,
-                    endTime: min(t + interval, totalDuration),
-                    text: "[Transcription pending — CoreML model integration required]"
-                ))
-                t += interval
-                speakerToggle.toggle()
-            }
-        } else {
-            // No audio was preprocessed — use static placeholder
-            segments = [
-                TranscriptSegment(speaker: me, startTime: 0, endTime: 4, text: "[No audio captured for this meeting]"),
-            ]
+        // App track segments (remote participants)
+        if let asr = appTranscription, let track = appTrack, let timings = asr.tokenTimings {
+            let segments = buildSegmentsFromTimings(timings, vadMap: track.vadMap, defaultSpeaker: "Remote")
+            allSegments.append(contentsOf: segments)
+        } else if let asr = appTranscription, let track = appTrack, !asr.text.isEmpty {
+            allSegments.append(TranscriptSegment(
+                speaker: "Remote",
+                startTime: 0,
+                endTime: track.duration,
+                text: asr.text
+            ))
         }
+
+        // Mic track segments (local user)
+        if let asr = micTranscription, let track = micTrack, let timings = asr.tokenTimings {
+            let segments = buildSegmentsFromTimings(timings, vadMap: track.vadMap, defaultSpeaker: me)
+            allSegments.append(contentsOf: segments)
+        } else if let asr = micTranscription, let track = micTrack, !asr.text.isEmpty {
+            allSegments.append(TranscriptSegment(
+                speaker: me,
+                startTime: 0,
+                endTime: track.duration,
+                text: asr.text
+            ))
+        }
+
+        // Apply diarization speaker labels
+        if let appDiar = appDiarization {
+            let diarSegments = appDiar.segments.map { seg in
+                DiarizationSegment(
+                    speakerID: "R_\(seg.speakerId)",
+                    startTime: appTrack?.vadMap.toOriginalTime(TimeInterval(seg.startTimeSeconds)) ?? TimeInterval(seg.startTimeSeconds),
+                    endTime: appTrack?.vadMap.toOriginalTime(TimeInterval(seg.endTimeSeconds)) ?? TimeInterval(seg.endTimeSeconds)
+                )
+            }
+
+            // Build speaker name map from embeddings
+            let embeddings: [SpeakerEmbedding] = appDiar.segments.compactMap { seg in
+                guard !seg.embedding.isEmpty else { return nil }
+                return SpeakerEmbedding(speakerID: "R_\(seg.speakerId)", vector: seg.embedding)
+            }
+            // Deduplicate by speakerID
+            var seenIDs = Set<String>()
+            let uniqueEmbeddings = embeddings.filter { seenIDs.insert($0.speakerID).inserted }
+
+            let matches = SpeakerMatcher.matchSpeakers(
+                embeddings: uniqueEmbeddings,
+                database: speakerStore.speakers,
+                localUserName: me
+            )
+
+            var nameMap: [String: String] = [:]
+            for match in matches {
+                nameMap[match.detectedSpeakerID] = match.assignedName
+            }
+
+            // Apply diarization labels to app track segments
+            for i in allSegments.indices where allSegments[i].speaker == "Remote" {
+                if let best = SegmentMerger.findBestOverlapPublic(
+                    start: allSegments[i].startTime,
+                    end: allSegments[i].endTime,
+                    diarizationSegments: diarSegments
+                ), let name = nameMap[best] {
+                    allSegments[i].speaker = name
+                }
+            }
+
+            // Update speaker database
+            SpeakerMatcher.updateDatabase(matches: matches, speakerStore: speakerStore)
+        }
+
+        // Sort by start time and merge consecutive same-speaker segments
+        allSegments.sort { $0.startTime < $1.startTime }
+        let merged = SegmentMerger.mergeConsecutive(allSegments)
+
+        // Handle empty result
+        let finalSegments = merged.isEmpty
+            ? [TranscriptSegment(speaker: me, startTime: 0, endTime: 0, text: "[No speech detected]")]
+            : merged
 
         return TranscriptDocument(
             title: job.meetingTitle.isEmpty ? "Meeting" : job.meetingTitle,
             startTime: job.startTime,
             endTime: job.endTime,
-            participants: Array(Set(segments.map(\.speaker))).sorted(),
-            segments: segments
+            participants: Array(Set(finalSegments.map(\.speaker))).sorted(),
+            segments: finalSegments
         )
+    }
+
+    /// Convert token timings from ASR into TranscriptSegments, grouping tokens into sentences.
+    private func buildSegmentsFromTimings(
+        _ timings: [TokenTiming],
+        vadMap: VadSegmentMap,
+        defaultSpeaker: String
+    ) -> [TranscriptSegment] {
+        guard !timings.isEmpty else { return [] }
+
+        // Group tokens into sentence-level segments (split on sentence-ending punctuation)
+        var segments: [TranscriptSegment] = []
+        var currentTokens: [TokenTiming] = []
+
+        for token in timings {
+            currentTokens.append(token)
+
+            let text = token.token.trimmingCharacters(in: .whitespaces)
+            let isSentenceEnd = text.hasSuffix(".") || text.hasSuffix("?") || text.hasSuffix("!")
+
+            if isSentenceEnd && currentTokens.count >= 3 {
+                let sentenceText = currentTokens.map(\.token).joined().trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !sentenceText.isEmpty else { continue }
+
+                let start = vadMap.toOriginalTime(currentTokens.first!.startTime)
+                let end = vadMap.toOriginalTime(currentTokens.last!.endTime)
+
+                segments.append(TranscriptSegment(
+                    speaker: defaultSpeaker,
+                    startTime: start,
+                    endTime: end,
+                    text: sentenceText
+                ))
+                currentTokens.removeAll()
+            }
+        }
+
+        // Flush remaining tokens
+        if !currentTokens.isEmpty {
+            let sentenceText = currentTokens.map(\.token).joined().trimmingCharacters(in: .whitespacesAndNewlines)
+            if !sentenceText.isEmpty {
+                let start = vadMap.toOriginalTime(currentTokens.first!.startTime)
+                let end = vadMap.toOriginalTime(currentTokens.last!.endTime)
+                segments.append(TranscriptSegment(
+                    speaker: defaultSpeaker,
+                    startTime: start,
+                    endTime: end,
+                    text: sentenceText
+                ))
+            }
+        }
+
+        return segments
     }
 }
 

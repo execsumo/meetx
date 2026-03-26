@@ -1,5 +1,5 @@
 import AVFAudio
-import Accelerate
+import FluidAudio
 import Foundation
 
 // MARK: - VAD Segment Map
@@ -16,7 +16,6 @@ struct VadSegmentMap {
 
     let mappings: [Mapping]
 
-    /// Total duration of trimmed audio (speech only).
     var trimmedDuration: TimeInterval {
         mappings.last?.trimmedEnd ?? 0
     }
@@ -25,7 +24,6 @@ struct VadSegmentMap {
     func toOriginalTime(_ trimmedTime: TimeInterval) -> TimeInterval {
         guard !mappings.isEmpty else { return trimmedTime }
 
-        // Binary search for the mapping containing this trimmed time
         var lo = 0, hi = mappings.count - 1
         while lo <= hi {
             let mid = (lo + hi) / 2
@@ -35,13 +33,11 @@ struct VadSegmentMap {
             } else if trimmedTime > m.trimmedEnd {
                 lo = mid + 1
             } else {
-                // Found the segment — linear interpolation within
                 let offset = trimmedTime - m.trimmedStart
                 return m.originalStart + offset
             }
         }
 
-        // Past the last segment — clamp to end
         if let last = mappings.last {
             return last.originalEnd
         }
@@ -64,45 +60,29 @@ struct PreprocessedTrack {
 
 // MARK: - Audio Preprocessor
 
-/// Stage 1 of the pipeline: load WAV, downmix to mono, resample to 16 kHz, run VAD trimming.
+/// Stage 1: Load WAV → resample to 16 kHz mono → run Silero VAD → trim silence.
+/// Uses FluidAudio's AudioConverter for resampling and VadManager for voice activity detection.
 enum AudioPreprocessor {
 
     static let targetSampleRate: Double = 16_000
+    private static let vadChunkSize = 4096 // Silero VAD expects 4096-sample chunks (256ms at 16kHz)
 
     /// Preprocess a recorded WAV file into a 16 kHz mono float buffer with VAD trimming.
-    static func preprocess(wavURL: URL, isStereo: Bool) async throws -> PreprocessedTrack {
-        // Step 1: Load the WAV file
-        let sourceFile = try AVAudioFile(forReading: wavURL)
-        let sourceFormat = sourceFile.processingFormat
-        let frameCount = AVAudioFrameCount(sourceFile.length)
+    static func preprocess(wavURL: URL) async throws -> PreprocessedTrack {
+        // Step 1: Load and resample to 16kHz mono using FluidAudio's AudioConverter
+        let converter = AudioConverter()
+        let samples = try converter.resampleAudioFile(wavURL)
 
-        guard let sourceBuffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: frameCount) else {
-            throw PreprocessingError.bufferAllocationFailed
-        }
-        try sourceFile.read(into: sourceBuffer)
+        // Step 2: Run Silero VAD to detect speech segments
+        let vadManager = try await VadManager()
+        let speechSegments = try await runVad(on: samples, using: vadManager)
 
-        // Step 2: Downmix to mono if stereo
-        let monoBuffer: AVAudioPCMBuffer
-        if isStereo && sourceFormat.channelCount > 1 {
-            monoBuffer = try downmixToMono(sourceBuffer)
-        } else if sourceFormat.channelCount == 1 {
-            monoBuffer = sourceBuffer
-        } else {
-            monoBuffer = try downmixToMono(sourceBuffer)
-        }
-
-        // Step 3: Resample to 16 kHz
-        let resampledBuffer = try resampleTo16kHz(monoBuffer)
-
-        // Step 4: Extract float samples
-        guard let channelData = resampledBuffer.floatChannelData else {
-            throw PreprocessingError.noChannelData
-        }
-        let count = Int(resampledBuffer.frameLength)
-        let samples = Array(UnsafeBufferPointer(start: channelData[0], count: count))
-
-        // Step 5: VAD trimming
-        let (trimmedSamples, vadMap) = vadTrim(samples: samples, sampleRate: targetSampleRate)
+        // Step 3: Build trimmed audio and segment map
+        let (trimmedSamples, vadMap) = buildTrimmedAudio(
+            samples: samples,
+            speechSegments: speechSegments,
+            sampleRate: targetSampleRate
+        )
 
         return PreprocessedTrack(
             samples: trimmedSamples,
@@ -111,138 +91,25 @@ enum AudioPreprocessor {
         )
     }
 
-    // MARK: - Downmix
+    /// Run Silero VAD chunk-by-chunk and aggregate into speech segments.
+    private static func runVad(
+        on samples: [Float],
+        using vadManager: VadManager
+    ) async throws -> [(start: Int, end: Int)] {
+        let results = try await vadManager.process(samples)
 
-    /// Average left and right channels to produce a mono buffer.
-    private static func downmixToMono(_ stereoBuffer: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
-        guard let channelData = stereoBuffer.floatChannelData else {
-            throw PreprocessingError.noChannelData
-        }
-        let frameCount = Int(stereoBuffer.frameLength)
-        let channelCount = Int(stereoBuffer.format.channelCount)
-
-        let monoFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: stereoBuffer.format.sampleRate,
-            channels: 1,
-            interleaved: false
-        )!
-        guard let monoBuffer = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: AVAudioFrameCount(frameCount)) else {
-            throw PreprocessingError.bufferAllocationFailed
-        }
-        monoBuffer.frameLength = AVAudioFrameCount(frameCount)
-
-        guard let monoData = monoBuffer.floatChannelData else {
-            throw PreprocessingError.noChannelData
-        }
-
-        // Average all channels using Accelerate
-        // Start with channel 0
-        memcpy(monoData[0], channelData[0], frameCount * MemoryLayout<Float>.size)
-
-        // Add remaining channels
-        for ch in 1..<channelCount {
-            vDSP_vadd(monoData[0], 1, channelData[ch], 1, monoData[0], 1, vDSP_Length(frameCount))
-        }
-
-        // Divide by channel count
-        var divisor = Float(channelCount)
-        vDSP_vsdiv(monoData[0], 1, &divisor, monoData[0], 1, vDSP_Length(frameCount))
-
-        return monoBuffer
-    }
-
-    // MARK: - Resampling
-
-    /// Resample a mono buffer to 16 kHz using AVAudioConverter.
-    private static func resampleTo16kHz(_ sourceBuffer: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
-        let sourceSampleRate = sourceBuffer.format.sampleRate
-        if abs(sourceSampleRate - targetSampleRate) < 1.0 {
-            return sourceBuffer // Already at target rate
-        }
-
-        let targetFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: targetSampleRate,
-            channels: 1,
-            interleaved: false
-        )!
-
-        guard let converter = AVAudioConverter(from: sourceBuffer.format, to: targetFormat) else {
-            throw PreprocessingError.converterCreationFailed
-        }
-
-        let ratio = targetSampleRate / sourceSampleRate
-        let estimatedFrames = AVAudioFrameCount(Double(sourceBuffer.frameLength) * ratio) + 1024
-        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: estimatedFrames) else {
-            throw PreprocessingError.bufferAllocationFailed
-        }
-
-        var error: NSError?
-        var isDone = false
-        let status = converter.convert(to: outputBuffer, error: &error) { _, outStatus in
-            if isDone {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-            isDone = true
-            outStatus.pointee = .haveData
-            return sourceBuffer
-        }
-
-        if let error {
-            throw PreprocessingError.conversionFailed(error.localizedDescription)
-        }
-        guard status != .error else {
-            throw PreprocessingError.conversionFailed("AVAudioConverter returned error status")
-        }
-
-        return outputBuffer
-    }
-
-    // MARK: - VAD Trimming
-
-    /// Simple energy-based VAD until Silero VAD CoreML model is integrated.
-    /// Uses RMS energy with a fixed threshold to detect speech frames.
-    /// Returns trimmed samples and the segment map for timestamp remapping.
-    private static func vadTrim(
-        samples: [Float],
-        sampleRate: Double,
-        frameSize: Int = 512, // ~32ms at 16kHz
-        hopSize: Int = 256,   // ~16ms hop
-        threshold: Float = 0.01 // RMS energy threshold
-    ) -> ([Float], VadSegmentMap) {
-        guard !samples.isEmpty else {
-            return ([], VadSegmentMap(mappings: []))
-        }
-
-        // Detect speech frames using RMS energy
-        var speechFrames: [Bool] = []
-        var offset = 0
-        while offset + frameSize <= samples.count {
-            var rms: Float = 0
-            vDSP_rmsqv(
-                samples.withUnsafeBufferPointer { $0.baseAddress! + offset },
-                1,
-                &rms,
-                vDSP_Length(frameSize)
-            )
-            speechFrames.append(rms > threshold)
-            offset += hopSize
-        }
-
-        // Merge consecutive speech frames into segments
-        var segments: [(start: Int, end: Int)] = [] // in sample indices
+        // Convert per-chunk VadResults into contiguous speech segments
+        var segments: [(start: Int, end: Int)] = []
         var inSpeech = false
         var segStart = 0
 
-        for (i, isSpeech) in speechFrames.enumerated() {
-            let sampleOffset = i * hopSize
-            if isSpeech && !inSpeech {
+        for (i, result) in results.enumerated() {
+            let sampleOffset = i * vadChunkSize
+            if result.isVoiceActive && !inSpeech {
                 segStart = sampleOffset
                 inSpeech = true
-            } else if !isSpeech && inSpeech {
-                segments.append((start: segStart, end: sampleOffset + frameSize))
+            } else if !result.isVoiceActive && inSpeech {
+                segments.append((start: segStart, end: sampleOffset))
                 inSpeech = false
             }
         }
@@ -250,8 +117,17 @@ enum AudioPreprocessor {
             segments.append((start: segStart, end: samples.count))
         }
 
+        return segments
+    }
+
+    /// Build trimmed samples and VAD segment map from detected speech segments.
+    private static func buildTrimmedAudio(
+        samples: [Float],
+        speechSegments: [(start: Int, end: Int)],
+        sampleRate: Double
+    ) -> ([Float], VadSegmentMap) {
         // If no speech detected, return all samples (don't discard everything)
-        if segments.isEmpty {
+        if speechSegments.isEmpty {
             let fullMap = VadSegmentMap(mappings: [
                 VadSegmentMap.Mapping(
                     trimmedStart: 0,
@@ -263,14 +139,13 @@ enum AudioPreprocessor {
             return (samples, fullMap)
         }
 
-        // Build trimmed samples and mapping
         var trimmedSamples: [Float] = []
         var mappings: [VadSegmentMap.Mapping] = []
         var trimmedOffset: TimeInterval = 0
 
-        for seg in segments {
+        for seg in speechSegments {
             let originalStart = Double(seg.start) / sampleRate
-            let originalEnd = Double(seg.end) / sampleRate
+            let originalEnd = Double(min(seg.end, samples.count)) / sampleRate
             let segDuration = originalEnd - originalStart
 
             mappings.append(VadSegmentMap.Mapping(
@@ -286,23 +161,5 @@ enum AudioPreprocessor {
         }
 
         return (trimmedSamples, VadSegmentMap(mappings: mappings))
-    }
-}
-
-// MARK: - Errors
-
-enum PreprocessingError: LocalizedError {
-    case bufferAllocationFailed
-    case noChannelData
-    case converterCreationFailed
-    case conversionFailed(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .bufferAllocationFailed: return "Failed to allocate audio buffer"
-        case .noChannelData: return "Audio buffer has no channel data"
-        case .converterCreationFailed: return "Failed to create audio format converter"
-        case .conversionFailed(let detail): return "Audio conversion failed: \(detail)"
-        }
     }
 }
