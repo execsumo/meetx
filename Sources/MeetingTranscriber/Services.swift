@@ -37,6 +37,7 @@ final class MeetingDetector {
     private var pollingTask: Task<Void, Never>?
     private var consecutiveDetections = 0
     private var cooldownUntil: Date?
+    private var isSimulated = false
 
     private static let teamsProcessNames: Set<String> = [
         "Microsoft Teams",
@@ -76,6 +77,8 @@ final class MeetingDetector {
     }
 
     private func poll() {
+        // Don't interfere with simulated meetings
+        if isSimulated { return }
         if let cooldown = cooldownUntil, Date() < cooldown { return }
         cooldownUntil = nil
 
@@ -158,6 +161,7 @@ final class MeetingDetector {
     // MARK: - Simulation (development only)
 
     func simulateMeetingStart(title: String) {
+        isSimulated = true
         let snapshot = MeetingSnapshot(title: title, startedAt: Date(), teamsPID: nil)
         activeSnapshot = snapshot
         onMeetingStarted(snapshot)
@@ -165,6 +169,7 @@ final class MeetingDetector {
 
     func simulateMeetingEnd() {
         guard let snapshot = activeSnapshot else { return }
+        isSimulated = false
         activeSnapshot = nil
         onMeetingEnded(snapshot)
     }
@@ -771,20 +776,27 @@ final class PipelineProcessor: ObservableObject {
     // MARK: - Stage 1: Preprocessing (AudioConverter + Silero VAD)
 
     private func runPreprocessing(_ job: PipelineJob) async throws {
-        let appExists = FileManager.default.fileExists(atPath: job.appAudioPath.path)
-        let micExists = FileManager.default.fileExists(atPath: job.micAudioPath.path)
+        let fm = FileManager.default
+        let appExists = fm.fileExists(atPath: job.appAudioPath.path)
+        let micExists = fm.fileExists(atPath: job.micAudioPath.path)
 
         guard appExists || micExists else { throw PipelineError.noAudioFiles }
 
+        // Skip files that are too small to contain meaningful audio (< 1KB)
+        let appUsable = appExists && (try? fm.attributesOfItem(atPath: job.appAudioPath.path)[.size] as? Int).flatMap({ $0 > 1024 }) ?? false
+        let micUsable = micExists && (try? fm.attributesOfItem(atPath: job.micAudioPath.path)[.size] as? Int).flatMap({ $0 > 1024 }) ?? false
+
+        guard appUsable || micUsable else { throw PipelineError.noAudioFiles }
+
         // Preprocess both tracks concurrently on background threads
         try await withThrowingTaskGroup(of: (String, PreprocessedTrack).self) { group in
-            if appExists {
+            if appUsable {
                 group.addTask {
                     let track = try await AudioPreprocessor.preprocess(wavURL: job.appAudioPath)
                     return ("app", track)
                 }
             }
-            if micExists {
+            if micUsable {
                 group.addTask {
                     let track = try await AudioPreprocessor.preprocess(wavURL: job.micAudioPath)
                     return ("mic", track)
@@ -800,10 +812,8 @@ final class PipelineProcessor: ObservableObject {
     // MARK: - Stage 2: Transcription (Parakeet TDT V2)
 
     private func runTranscription(_ job: PipelineJob) async throws {
-        // Load Parakeet model (auto-downloads from HuggingFace on first use)
-        let modelsDir = FileManager.default.meetingTranscriberAppSupportDirectory
-            .appendingPathComponent("Models", isDirectory: true)
-        let models = try await AsrModels.load(from: modelsDir, version: .v2)
+        // Load Parakeet model from FluidAudio's cache (auto-downloads on first use)
+        let models = try await AsrModels.loadFromCache(version: .v2)
         let asrManager = AsrManager()
         try await asrManager.initialize(models: models)
 

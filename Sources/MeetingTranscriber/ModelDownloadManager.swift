@@ -10,32 +10,40 @@ final class ModelDownloadManager: ObservableObject {
     @Published private(set) var downloadProgress: [ModelKind: Double] = [:]
     @Published private(set) var errors: [ModelKind: String] = [:]
 
-    private let modelsDirectory: URL
     private var activeTasks: [ModelKind: Task<Void, Never>] = [:]
     private let catalog: ModelCatalog
 
     init(catalog: ModelCatalog) {
         self.catalog = catalog
-        self.modelsDirectory = FileManager.default.meetingTranscriberAppSupportDirectory
-            .appendingPathComponent("Models", isDirectory: true)
         refreshStatuses()
     }
 
-    /// Check which models are already cached.
+    /// Check which models are already cached by looking at FluidAudio's actual cache locations.
     func refreshStatuses() {
-        // Check if ASR models are downloaded by looking for the model directory
-        let asrDir = modelsDirectory.appendingPathComponent("parakeet-tdt-v2", isDirectory: true)
-        if FileManager.default.fileExists(atPath: asrDir.path) {
-            catalog.markReady(.batchParakeet)
-        }
+        let fm = FileManager.default
 
-        let vadDir = modelsDirectory.appendingPathComponent("silero-vad", isDirectory: true)
-        if FileManager.default.fileExists(atPath: vadDir.path) {
+        // VAD: FluidAudio stores in ~/Library/Application Support/FluidAudio/Models/silero-vad-coreml/
+        let vadDir = AsrModels.defaultCacheDirectory(for: .v2)
+            .deletingLastPathComponent()
+            .appendingPathComponent(Repo.vad.folderName, isDirectory: true)
+        if fm.fileExists(atPath: vadDir.path) {
             catalog.markReady(.batchVad)
         }
 
-        let diarDir = modelsDirectory.appendingPathComponent("diarizer", isDirectory: true)
-        if FileManager.default.fileExists(atPath: diarDir.path) {
+        // Parakeet V2: FluidAudio stores in ~/Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2-coreml/
+        // Also check our custom Models dir (where load(from:) puts it)
+        let asrDefaultDir = AsrModels.defaultCacheDirectory(for: .v2)
+        let asrCustomDir = FileManager.default.meetingTranscriberAppSupportDirectory
+            .appendingPathComponent(Repo.parakeetV2.folderName, isDirectory: true)
+        if fm.fileExists(atPath: asrDefaultDir.path) || fm.fileExists(atPath: asrCustomDir.path) {
+            catalog.markReady(.batchParakeet)
+        }
+
+        // Diarizer: FluidAudio stores in ~/Library/Application Support/FluidAudio/Models/speaker-diarization-coreml/
+        let fluidModelsDir = AsrModels.defaultCacheDirectory(for: .v2)
+            .deletingLastPathComponent()  // FluidAudio/Models/
+        let diarDir = fluidModelsDir.appendingPathComponent(Repo.diarizer.folderName, isDirectory: true)
+        if fm.fileExists(atPath: diarDir.path) {
             catalog.markReady(.diarization)
         }
     }
@@ -73,8 +81,8 @@ final class ModelDownloadManager: ObservableObject {
                     catalog.markReady(.batchVad)
 
                 case .batchParakeet:
-                    // AsrModels.load auto-downloads
-                    let _ = try await AsrModels.load(from: modelsDirectory, version: .v2) { [weak self] progress in
+                    // Use FluidAudio's default cache so models are shared
+                    let _ = try await AsrModels.loadFromCache(version: .v2) { [weak self] progress in
                         Task { @MainActor [weak self] in
                             self?.downloadProgress[.batchParakeet] = progress.fractionCompleted
                         }
@@ -82,7 +90,6 @@ final class ModelDownloadManager: ObservableObject {
                     catalog.markReady(.batchParakeet)
 
                 case .diarization:
-                    // OfflineDiarizerManager.prepareModels auto-downloads
                     let diarizer = OfflineDiarizerManager()
                     try await diarizer.prepareModels()
                     catalog.markReady(.diarization)
