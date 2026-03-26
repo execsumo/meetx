@@ -211,6 +211,11 @@ final class PipelineQueueStore: ObservableObject {
         persist()
     }
 
+    func remove(_ job: PipelineJob) {
+        jobs.removeAll { $0.id == job.id }
+        persist()
+    }
+
     var activeJob: PipelineJob? {
         jobs.first { $0.stage != .complete }
     }

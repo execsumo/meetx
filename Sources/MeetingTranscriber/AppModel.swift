@@ -189,6 +189,27 @@ final class AppModel: ObservableObject {
         LaunchAtLogin.setEnabled(enabled)
     }
 
+    func openSettings(tab: SettingsTab?) {
+        if let tab { selectedSettingsTab = tab }
+        // Open the Settings window reliably from MenuBarExtra
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func chooseOutputDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: settingsStore.settings.outputDirectory, isDirectory: true)
+        panel.prompt = "Choose"
+        panel.message = "Select output folder for meeting transcripts"
+        if panel.runModal() == .OK, let url = panel.url {
+            settingsStore.settings.outputDirectory = url.path
+        }
+    }
+
     func chooseDefaultOutputDirectory() {
         settingsStore.settings.outputDirectory = FileManager.default.meetingTranscriberOutputDirectory.path
     }
@@ -205,6 +226,16 @@ final class AppModel: ObservableObject {
     func retry(_ job: PipelineJob) {
         pipelineProcessor.retryFailedJob(job)
         phase = .processing
+    }
+
+    func dismissJob(_ job: PipelineJob) {
+        // Delete associated audio files if job is complete or failed
+        if job.stage == .complete || job.stage == .failed {
+            let fm = FileManager.default
+            try? fm.removeItem(at: job.appAudioPath)
+            try? fm.removeItem(at: job.micAudioPath)
+        }
+        queueStore.remove(job)
     }
 
     func saveSpeakerName(candidate: NamingCandidate, name: String) {
