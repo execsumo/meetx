@@ -16,11 +16,13 @@ public struct MeetingSnapshot {
     public var title: String
     public var startedAt: Date
     public var teamsPID: pid_t?
+    public var rosterNames: [String]
 
-    public init(title: String, startedAt: Date, teamsPID: pid_t?) {
+    public init(title: String, startedAt: Date, teamsPID: pid_t?, rosterNames: [String] = []) {
         self.title = title
         self.startedAt = startedAt
         self.teamsPID = teamsPID
+        self.rosterNames = rosterNames
     }
 }
 
@@ -30,13 +32,15 @@ public struct RecordingSession {
     public let appAudioPath: URL
     public let micAudioPath: URL
     public var micDelaySeconds: TimeInterval
+    public var rosterNames: [String]
 
-    public init(title: String, startTime: Date, appAudioPath: URL, micAudioPath: URL, micDelaySeconds: TimeInterval) {
+    public init(title: String, startTime: Date, appAudioPath: URL, micAudioPath: URL, micDelaySeconds: TimeInterval, rosterNames: [String] = []) {
         self.title = title
         self.startTime = startTime
         self.appAudioPath = appAudioPath
         self.micAudioPath = micAudioPath
         self.micDelaySeconds = micDelaySeconds
+        self.rosterNames = rosterNames
     }
 }
 
@@ -49,6 +53,7 @@ public final class MeetingDetector {
     private let onMeetingEnded: @MainActor (MeetingSnapshot) -> Void
     private var activeSnapshot: MeetingSnapshot?
     private var pollingTask: Task<Void, Never>?
+    private var rosterPollingTask: Task<Void, Never>?
     private var consecutiveDetections = 0
     private var cooldownUntil: Date?
     private var isSimulated = false
@@ -102,17 +107,21 @@ public final class MeetingDetector {
             consecutiveDetections += 1
             if consecutiveDetections >= 2, activeSnapshot == nil {
                 let title = Self.extractTeamsWindowTitle() ?? ""
+                let rosterNames = RosterReader.readRoster(teamsPID: result.pid)
                 let snapshot = MeetingSnapshot(
                     title: title,
                     startedAt: Date(),
-                    teamsPID: result.pid
+                    teamsPID: result.pid,
+                    rosterNames: rosterNames
                 )
                 activeSnapshot = snapshot
+                startRosterPolling()
                 onMeetingStarted(snapshot)
             }
         } else {
             consecutiveDetections = 0
             if let snapshot = activeSnapshot {
+                stopRosterPolling()
                 activeSnapshot = nil
                 cooldownUntil = Date().addingTimeInterval(5)
                 onMeetingEnded(snapshot)
@@ -172,6 +181,33 @@ public final class MeetingDetector {
         return nil
     }
 
+    // MARK: - Roster Polling
+
+    /// Poll the Teams roster every 15 seconds during an active meeting to accumulate participant names.
+    private func startRosterPolling() {
+        rosterPollingTask?.cancel()
+        rosterPollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                guard let self, !Task.isCancelled, self.activeSnapshot != nil else { break }
+                let names = RosterReader.readRoster(teamsPID: self.activeSnapshot?.teamsPID)
+                if !names.isEmpty {
+                    // Accumulate unique names across polls (participants may join/leave)
+                    let existing = Set(self.activeSnapshot?.rosterNames ?? [])
+                    let newNames = names.filter { !existing.contains($0) }
+                    if !newNames.isEmpty {
+                        self.activeSnapshot?.rosterNames.append(contentsOf: newNames)
+                    }
+                }
+            }
+        }
+    }
+
+    private func stopRosterPolling() {
+        rosterPollingTask?.cancel()
+        rosterPollingTask = nil
+    }
+
     // MARK: - Simulation (development only)
 
     public func simulateMeetingStart(title: String) {
@@ -213,11 +249,12 @@ public final class RecordingManager: ObservableObject {
     /// Callback for max-duration split: enqueue current session, optionally restart.
     public var onMaxDurationReached: (@MainActor (RecordingSession) -> Void)?
 
-    /// The Teams PID and title for the current recording (needed for re-start on split).
+    /// The Teams PID, title, and roster for the current recording (needed for re-start on split).
     private var currentTeamsPID: pid_t?
     private var currentTitle: String = ""
+    private var currentRosterNames: [String] = []
 
-    public func startRecording(title: String, teamsPID: pid_t?) throws {
+    public func startRecording(title: String, teamsPID: pid_t?, rosterNames: [String] = []) throws {
         guard activeSession == nil else { return }
 
         let stamp = Formatting.recordingFileFormatter.string(from: Date())
@@ -250,13 +287,15 @@ public final class RecordingManager: ObservableObject {
 
         currentTeamsPID = teamsPID
         currentTitle = title
+        currentRosterNames = rosterNames
 
         activeSession = RecordingSession(
             title: title,
             startTime: Date(),
             appAudioPath: appPath,
             micAudioPath: micPath,
-            micDelaySeconds: micDelay
+            micDelaySeconds: micDelay,
+            rosterNames: rosterNames
         )
 
         // 4-hour max recording duration
@@ -265,6 +304,13 @@ public final class RecordingManager: ObservableObject {
             guard let self, !Task.isCancelled else { return }
             self.handleMaxDurationReached()
         }
+    }
+
+    /// Update the roster names on the active session (called when meeting ends with final roster).
+    public func updateRosterNames(_ names: [String]) {
+        guard activeSession != nil, !names.isEmpty else { return }
+        activeSession?.rosterNames = names
+        currentRosterNames = names
     }
 
     public func stopRecording() -> RecordingSession? {
@@ -411,9 +457,10 @@ public final class RecordingManager: ObservableObject {
         // Restart recording if we had a Teams PID (meeting still active)
         let pid = currentTeamsPID
         let title = currentTitle
+        let roster = currentRosterNames
         if pid != nil {
             do {
-                try startRecording(title: title + " (cont.)", teamsPID: pid)
+                try startRecording(title: title + " (cont.)", teamsPID: pid, rosterNames: roster)
             } catch {
                 NSLog("Lurk: Failed to restart recording after max duration: \(error)")
             }
@@ -672,7 +719,8 @@ public final class PipelineProcessor: ObservableObject {
             stage: .queued,
             stageStartTime: nil,
             error: nil,
-            retryCount: 0
+            retryCount: 0,
+            rosterNames: session.rosterNames
         )
         queueStore.enqueue(job)
         runNextIfNeeded()
@@ -965,6 +1013,32 @@ public final class PipelineProcessor: ObservableObject {
             var nameMap: [String: String] = [:]
             for match in matches {
                 nameMap[match.detectedSpeakerID] = match.assignedName
+            }
+
+            // Roster-based auto-naming: use Teams participant list to fill in unmatched speakers
+            if !job.rosterNames.isEmpty {
+                let rosterSet = Set(job.rosterNames)
+                let knownNames = Set(matches.filter { !$0.isNewSpeaker }.map(\.assignedName))
+                let unmatchedSpeakers = matches.filter { $0.isNewSpeaker }
+
+                // Filter roster to names not already matched (excluding local user)
+                let unmatchedRosterNames = rosterSet.subtracting(knownNames).subtracting([me])
+
+                if unmatchedSpeakers.count == 1 && unmatchedRosterNames.count == 1 {
+                    // Exactly one unknown speaker and one unmatched roster name — auto-assign
+                    let speakerID = unmatchedSpeakers[0].detectedSpeakerID
+                    let rosterName = unmatchedRosterNames.first!
+                    nameMap[speakerID] = rosterName
+                    NSLog("Lurk: Auto-assigned roster name '\(rosterName)' to \(speakerID)")
+                } else if unmatchedSpeakers.count == unmatchedRosterNames.count && unmatchedSpeakers.count > 0 {
+                    // Same number of unmatched speakers and roster names — assign in order
+                    // (Best effort; without additional signal we can't do better)
+                    let sortedRoster = unmatchedRosterNames.sorted()
+                    for (i, speaker) in unmatchedSpeakers.enumerated() where i < sortedRoster.count {
+                        nameMap[speaker.detectedSpeakerID] = sortedRoster[i]
+                        NSLog("Lurk: Auto-assigned roster name '\(sortedRoster[i])' to \(speaker.detectedSpeakerID)")
+                    }
+                }
             }
 
             // Apply diarization labels to app track segments

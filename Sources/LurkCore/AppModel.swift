@@ -121,7 +121,8 @@ public final class AppModel: ObservableObject {
                 do {
                     try self.recordingManager.startRecording(
                         title: snapshot.title,
-                        teamsPID: snapshot.teamsPID
+                        teamsPID: snapshot.teamsPID,
+                        rosterNames: snapshot.rosterNames
                     )
                     self.phase = .recording
                     self.errorMessage = nil
@@ -130,8 +131,10 @@ public final class AppModel: ObservableObject {
                     self.errorMessage = error.localizedDescription
                 }
             },
-            onMeetingEnded: { [weak self] _ in
+            onMeetingEnded: { [weak self] snapshot in
                 guard let self else { return }
+                // Update the recording session with the final accumulated roster names
+                self.recordingManager.updateRosterNames(snapshot.rosterNames)
                 guard let session = self.recordingManager.stopRecording() else { return }
                 self.pipelineProcessor.enqueueFinishedRecording(session, endedAt: Date())
                 self.phase = .processing

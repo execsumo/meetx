@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The app builds cleanly with `swift build` and runs as a menu bar app on macOS 14.2+. Core infrastructure is complete — meeting detection, audio capture, and the full UI are functional. Pipeline stages (transcription, diarization) are stubbed pending CoreML model integration.
+The app builds cleanly with `swift build` and runs as a menu bar app on macOS 14.2+. Core infrastructure is complete — meeting detection, dual-track audio capture, on-device transcription (Parakeet TDT V2), VAD (Silero), speaker diarization (LS-EEND + WeSpeaker), and speaker assignment are all functional via the FluidAudio framework. An `.app` bundle is available via `./scripts/bundle.sh`.
 
 ## What's Working
 
@@ -10,81 +10,97 @@ The app builds cleanly with `swift build` and runs as a menu bar app on macOS 14
 - Polls `IOPMCopyAssertionsByProcess()` every 3 seconds for Teams power assertions
 - Extracts meeting title from Teams window via `CGWindowListCopyWindowInfo`
 - Debounce: requires 2 consecutive detections before triggering
-- Cooldown: 30-second delay after meeting end before re-detection
-- Simulation mode available for testing without a real Teams call
+- Cooldown: 5-second delay after meeting end before re-detection
+- Simulation mode available for testing without a real Teams call (with `isSimulated` flag to prevent polling interference)
 
 ### Audio Capture
 - **App audio**: `CATapDescription` process tap on the Teams PID, recorded via `AVAudioEngine` to WAV
 - **Microphone**: Separate `AVAudioEngine` instance recording to WAV
 - Both tracks saved to `~/Library/Application Support/Lurk/recordings/`
 - Mic delay calibration stored per session for alignment
-- Temp file cleanup on app launch (removes stale `.wav` files older than 24 hours)
+- 4-hour max recording duration with automatic split and re-start
+- Temp file cleanup on app launch (removes stale `.wav` files older than 48 hours)
 
-### Pipeline
+### Pipeline (Fully Implemented)
 - Sequential job queue with stages: queued → preprocessing → transcribing → diarizing → assigning → complete
-- Jobs persist to JSON and survive app restart
-- Failed jobs can be retried (up to 3 attempts)
-- Jobs can be dismissed from the queue with associated audio file cleanup
-- Currently writes a placeholder markdown transcript (real stages are stubbed)
+- **Preprocessing**: Resample to 16kHz mono via `AudioConverter`, Silero VAD silence trimming, `VadSegmentMap` for timestamp remapping
+- **Transcription**: Parakeet TDT V2 via `AsrManager` with 16k sample minimum guard
+- **Diarization**: `OfflineDiarizerManager` for speaker segments + embeddings
+- **Speaker Assignment**: Cosine distance matching against `SpeakerStore`, confidence margin filtering, embedding diversity management
+- Non-retryable errors (no audio, too short) fail immediately; transient errors retry 3x with backoff (5s, 30s, 5min)
+- Jobs persist to JSON and survive app restart; failed jobs auto-retry on relaunch
+- Pipeline fires `onPipelineIdle` callback so app phase returns to dormant
+- Markdown transcript output with timestamped speaker-labeled segments
+
+### Model Management
+- `ModelDownloadManager` pre-downloads all 3 model sets (VAD, Parakeet, Diarizer) via FluidAudio
+- Status detection checks FluidAudio's actual cache paths (`~/Library/Application Support/FluidAudio/Models/`)
+- Progress tracking per model during download
+- Models auto-download on first meeting if not pre-downloaded
 
 ### UI
-- Menu bar dropdown with status dot, recording timer, job list, and action buttons
-- Settings window with 6 tabs: General, Transcription, Dictation, Speakers, Permissions, About
+- Menu bar dropdown with status dot (pulsing red during recording), recording timer, job list with dismiss buttons
+- Settings window (opened via `@Environment(\.openWindow)`) with 6 tabs: General, Transcription, Dictation, Speakers, Permissions, About
+- Keyboard input works in Settings (activation policy switching)
 - Output folder picker via `NSOpenPanel`
-- Custom vocabulary management (add/remove terms, 4-char min, 50-term cap)
-- Speaker table with inline rename, merge, delete, search, and sort
-- Model download status display (ready for real download manager)
+- Custom vocabulary management (add/remove terms, 3-char min, 50-term cap, immediate UI update on delete)
+- Speaker table with inline rename, merge, delete (context menu), search, and sort (Name / Last Seen / Meeting Count)
+- Model download status with progress bars
 - Permission status with grant buttons and System Settings deep-links
 - Launch at login via `SMAppService`
+- Quit button in menu bar dropdown
+
+### App Bundle
+- `Info.plist` with `LSUIElement` (menu bar app), `NSMicrophoneUsageDescription`, bundle ID `com.execsumo.lurk`
+- `Lurk.entitlements` with audio-input only (no sandbox per spec)
+- `scripts/bundle.sh` builds via SPM, creates `.app` bundle, ad-hoc signs
+- Supports `--release` and `--sign IDENTITY` flags for distribution builds
+
+### Testing
+- `LurkTests` executable target with 30+ tests covering: VadSegmentMap, cosine distance, SpeakerMatcher, SegmentMerger, AudioPreprocessor, TranscriptWriter, SpeakerStore, PipelineQueueStore
+- Custom lightweight test harness (no XCTest/Xcode dependency)
+- Run with `swift run LurkTests`
 
 ### Persistence
 - `SettingsStore`: UserDefaults-backed app settings
 - `SpeakerStore`: JSON file at `~/Library/Application Support/Lurk/speakers.json`
 - `PipelineQueueStore`: JSON file at `~/Library/Application Support/Lurk/queue.json`
 
-## What's Stubbed
+## Architecture
 
-### Pipeline Stages
-All pipeline stages in `PipelineProcessor.processJob()` currently simulate work with delays and produce a placeholder transcript. The real implementations need:
+| Target | Purpose |
+|--------|---------|
+| `LurkCore` (library) | All models, services, views, stores |
+| `Lurk` (executable) | App entry point, imports LurkCore |
+| `LurkTests` (executable) | Test runner, imports LurkCore |
 
-1. **Preprocessing**: Load WAV, downmix to mono, resample to 16kHz, VAD trimming
-2. **Transcription**: Run Parakeet TDT V2 CoreML model on preprocessed audio
-3. **Diarization**: Run LS-EEND + WeSpeaker CoreML models for speaker segments
-4. **Speaker Assignment**: Match diarization embeddings against `SpeakerStore` profiles
-
-### Model Download Manager
-`ModelDownloadManager` has the interface but `downloadAllModels()` is a no-op. Needs:
-- URLs for CoreML model files (Silero VAD, Parakeet TDT, LS-EEND, WeSpeaker)
-- Download with progress tracking to `~/Library/Application Support/Lurk/Models/`
-- Checksum verification
-
-### CoreML Models
-The models referenced in `spec.md` (Parakeet TDT V2, Silero VAD v6, LS-EEND, WeSpeaker) are not available as pre-built CoreML packages. They exist as PyTorch/ONNX and need conversion via `coremltools`.
-
-## Files
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| `Package.swift` | ~20 | Package definition, macOS 14.2+, FluidAudio dependency |
-| `MTApp.swift` | ~20 | App entry, MenuBarExtra + Settings scenes |
-| `AppModel.swift` | ~240 | Central state, action handlers, lifecycle |
-| `CoreModels.swift` | ~120 | AppPhase, PipelineJob, SpeakerProfile, AppSettings, etc. |
-| `Services.swift` | ~600 | MeetingDetector, RecordingManager, PipelineProcessor, PermissionCenter |
-| `Stores.swift` | ~180 | SettingsStore, SpeakerStore, PipelineQueueStore, FileManager extensions |
-| `Views.swift` | ~470 | MenuBarView, SettingsView, all tabs and components |
+| File | Purpose |
+|------|---------|
+| `Package.swift` | SPM config, macOS 14.2+, FluidAudio dependency |
+| `Sources/Lurk/MTApp.swift` | `@main` entry, MenuBarExtra + Window scenes |
+| `Sources/LurkCore/AppModel.swift` | Central state, action handlers, lifecycle |
+| `Sources/LurkCore/CoreModels.swift` | AppPhase, PipelineJob, SpeakerProfile, AppSettings, etc. |
+| `Sources/LurkCore/Services.swift` | MeetingDetector, RecordingManager, PipelineProcessor, PermissionCenter, TranscriptWriter |
+| `Sources/LurkCore/Stores.swift` | SettingsStore, SpeakerStore, PipelineQueueStore, FileManager extensions |
+| `Sources/LurkCore/Views.swift` | MenuBarView, SettingsView, all tabs and components |
+| `Sources/LurkCore/AudioProcessing.swift` | AudioPreprocessor, VadSegmentMap, PreprocessedTrack |
+| `Sources/LurkCore/SpeakerAssignment.swift` | SpeakerMatcher, SegmentMerger, cosineDistance |
+| `Sources/LurkCore/ModelDownloadManager.swift` | Pre-download manager for FluidAudio models |
+| `Info.plist` | App bundle metadata |
+| `Lurk.entitlements` | Audio input entitlement |
+| `scripts/bundle.sh` | Build + bundle script |
 
 ## Next Steps
 
-1. **Convert CoreML models** — Use `coremltools` (Python) to convert Parakeet TDT, Silero VAD, LS-EEND, and WeSpeaker from PyTorch/ONNX to `.mlpackage` format
-2. **Implement real preprocessing** — WAV loading, mono downmix, 16kHz resample, VAD trim using Silero
-3. **Implement real transcription** — Load Parakeet TDT CoreML model, run inference, extract timestamped segments
-4. **Implement real diarization** — Run LS-EEND for speaker change detection, WeSpeaker for embeddings
-5. **Implement speaker assignment** — Match embeddings against SpeakerStore, create NamingCandidates for unknowns
-6. **Wire up model download manager** — Host models, implement download with progress, checksum verification
-7. **Build .app bundle** — Package as a proper macOS app for distribution (currently runs as a Swift package executable)
+1. **Accessibility roster scraping** — Read Teams participant list via Accessibility APIs for automatic speaker naming (reduces manual naming after meetings)
+2. **End-to-end validation** — Test with a real Teams meeting to verify the full pipeline produces a usable transcript
+3. **App icon** — Create and include an app icon for the bundle
+4. **CI/CD pipeline** — GitHub Actions workflow for build, sign, notarize, publish
+5. **DMG packaging** — Create distributable disk image for direct download
+6. **Homebrew Cask formula** — For `brew install lurk`
 
 ## Known Issues
 
-- Running via `swift run` in a terminal causes macOS to attribute microphone permission to the terminal app (e.g., Ghostty) rather than Lurk itself. This resolves when packaged as a `.app` bundle.
+- Running via `swift run` in a terminal causes macOS to attribute microphone permission to the terminal app (e.g., Ghostty) rather than Lurk. Use `./scripts/bundle.sh && open build/Lurk.app` instead.
 - The `.window` style MenuBarExtra panel has a fixed max height; if many jobs accumulate, the bottom of the panel may clip.
-- FluidAudio is listed as a dependency but its actual integration is pending model availability.
+- Simulated meetings produce very short recordings that fail in the pipeline (expected — they exist for UI testing, not audio testing).

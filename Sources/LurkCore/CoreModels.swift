@@ -43,6 +43,7 @@ public struct PipelineJob: Codable, Identifiable, Equatable {
     public var stageStartTime: Date?
     public var error: String?
     public var retryCount: Int
+    public var rosterNames: [String]
 
     public init(
         id: UUID,
@@ -55,7 +56,8 @@ public struct PipelineJob: Codable, Identifiable, Equatable {
         stage: PipelineStage,
         stageStartTime: Date?,
         error: String?,
-        retryCount: Int
+        retryCount: Int,
+        rosterNames: [String] = []
     ) {
         self.id = id
         self.meetingTitle = meetingTitle
@@ -68,6 +70,7 @@ public struct PipelineJob: Codable, Identifiable, Equatable {
         self.stageStartTime = stageStartTime
         self.error = error
         self.retryCount = retryCount
+        self.rosterNames = rosterNames
     }
 }
 
