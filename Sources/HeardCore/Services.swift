@@ -272,7 +272,7 @@ public final class RecordingManager: ObservableObject {
         guard activeSession == nil else { return }
 
         let stamp = Formatting.recordingFileFormatter.string(from: Date())
-        let base = FileManager.default.lurkAppSupportDirectory
+        let base = FileManager.default.heardAppSupportDirectory
             .appendingPathComponent("recordings", isDirectory: true)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
 
@@ -288,7 +288,7 @@ public final class RecordingManager: ObservableObject {
                 try setupAppAudioRecording(pid: pid, to: appPath)
             } catch {
                 // App audio is best-effort — continue with mic-only if tap fails
-                NSLog("Lurk: App audio tap failed: \(error.localizedDescription)")
+                NSLog("Heard: App audio tap failed: \(error.localizedDescription)")
             }
         }
 
@@ -399,7 +399,7 @@ public final class RecordingManager: ObservableObject {
 
     private func setupAppAudioRecording(pid: pid_t, to url: URL) throws {
         let tapDesc = CATapDescription(stereoMixdownOfProcesses: [AudioObjectID(pid)])
-        tapDesc.name = "Lurk"
+        tapDesc.name = "Heard"
 
         var objectID: AudioObjectID = 0
         let status = AudioHardwareCreateProcessTap(tapDesc, &objectID)
@@ -476,7 +476,7 @@ public final class RecordingManager: ObservableObject {
             do {
                 try startRecording(title: title + " (cont.)", teamsPID: pid, rosterNames: roster)
             } catch {
-                NSLog("Lurk: Failed to restart recording after max duration: \(error)")
+                NSLog("Heard: Failed to restart recording after max duration: \(error)")
             }
         }
     }
@@ -596,7 +596,7 @@ public final class PermissionCenter: ObservableObject {
 public enum TempFileCleanup {
     /// Delete recording WAVs older than 48 hours. Called on app launch.
     public static func cleanStaleRecordings(activeJobPaths: Set<URL> = []) {
-        let recordingsDir = FileManager.default.lurkAppSupportDirectory
+        let recordingsDir = FileManager.default.heardAppSupportDirectory
             .appendingPathComponent("recordings", isDirectory: true)
         let fm = FileManager.default
 
@@ -637,7 +637,7 @@ public enum LaunchAtLogin {
                 try SMAppService.mainApp.unregister()
             }
         } catch {
-            NSLog("Lurk: Launch at login toggle failed: \(error.localizedDescription)")
+            NSLog("Heard: Launch at login toggle failed: \(error.localizedDescription)")
         }
     }
 }
@@ -790,7 +790,7 @@ public final class PipelineProcessor: ObservableObject {
 
                 // Fail immediately for errors that will never succeed on retry
                 if let pipelineError = error as? PipelineError, pipelineError.isNonRetryable {
-                    NSLog("Lurk: Non-retryable error for job \(working.id): \(error)")
+                    NSLog("Heard: Non-retryable error for job \(working.id): \(error)")
                     working.stage = .failed
                     queueStore.update(working)
                     return
@@ -800,10 +800,10 @@ public final class PipelineProcessor: ObservableObject {
 
                 if attempt < Self.maxRetries - 1 {
                     let delay = Self.retryDelays[min(attempt, Self.retryDelays.count - 1)]
-                    NSLog("Lurk: Stage \(working.stage.rawValue) failed (attempt \(attempt + 1)), retrying in \(Int(delay))s: \(error)")
+                    NSLog("Heard: Stage \(working.stage.rawValue) failed (attempt \(attempt + 1)), retrying in \(Int(delay))s: \(error)")
                     try? await Task.sleep(for: .seconds(delay))
                 } else {
-                    NSLog("Lurk: Exhausted retries for job \(working.id): \(error)")
+                    NSLog("Heard: Exhausted retries for job \(working.id): \(error)")
                     working.stage = .failed
                     queueStore.update(working)
                 }
@@ -1043,14 +1043,14 @@ public final class PipelineProcessor: ObservableObject {
                     let speakerID = unmatchedSpeakers[0].detectedSpeakerID
                     let rosterName = unmatchedRosterNames.first!
                     nameMap[speakerID] = rosterName
-                    NSLog("Lurk: Auto-assigned roster name '\(rosterName)' to \(speakerID)")
+                    NSLog("Heard: Auto-assigned roster name '\(rosterName)' to \(speakerID)")
                 } else if unmatchedSpeakers.count == unmatchedRosterNames.count && unmatchedSpeakers.count > 0 {
                     // Same number of unmatched speakers and roster names — assign in order
                     // (Best effort; without additional signal we can't do better)
                     let sortedRoster = unmatchedRosterNames.sorted()
                     for (i, speaker) in unmatchedSpeakers.enumerated() where i < sortedRoster.count {
                         nameMap[speaker.detectedSpeakerID] = sortedRoster[i]
-                        NSLog("Lurk: Auto-assigned roster name '\(sortedRoster[i])' to \(speaker.detectedSpeakerID)")
+                        NSLog("Heard: Auto-assigned roster name '\(sortedRoster[i])' to \(speaker.detectedSpeakerID)")
                     }
                 }
             }

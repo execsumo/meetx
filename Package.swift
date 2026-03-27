@@ -2,33 +2,33 @@
 import PackageDescription
 
 let package = Package(
-    name: "Lurk",
+    name: "Heard",
     platforms: [
         .macOS("14.2")
     ],
     products: [
-        .executable(name: "Lurk", targets: ["Lurk"])
+        .executable(name: "Heard", targets: ["Heard"])
     ],
     dependencies: [
         .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.12.4"),
     ],
     targets: [
         .target(
-            name: "LurkCore",
+            name: "HeardCore",
             dependencies: [
                 .product(name: "FluidAudio", package: "FluidAudio"),
             ],
-            path: "Sources/LurkCore"
+            path: "Sources/HeardCore"
         ),
         .executableTarget(
-            name: "Lurk",
-            dependencies: ["LurkCore"],
-            path: "Sources/Lurk"
+            name: "Heard",
+            dependencies: ["HeardCore"],
+            path: "Sources/Heard"
         ),
         .executableTarget(
-            name: "LurkTests",
-            dependencies: ["LurkCore"],
-            path: "Tests/LurkTests"
+            name: "HeardTests",
+            dependencies: ["HeardCore"],
+            path: "Tests/HeardTests"
         )
     ]
 )

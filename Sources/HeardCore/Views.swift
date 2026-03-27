@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Theme
 
-private enum LurkTheme {
+private enum HeardTheme {
     static let accent = Color.indigo
     static let cardBackground = Color(.windowBackgroundColor).opacity(0.5)
     static let cardBorder = Color.primary.opacity(0.06)
@@ -20,42 +20,9 @@ public struct MenuBarView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            statusHeader
-                .padding(.horizontal, 14)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
-
-            Divider().padding(.horizontal, 10)
-
-            actionsSection
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
-
-            Divider().padding(.horizontal, 10)
-
-            bottomBar
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
-        }
-        .frame(width: 260)
-    }
-
-    // MARK: Status Header
-
-    private var statusHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                statusIcon
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(model.phase.title)
-                        .font(.system(.headline, design: .rounded))
-                    statusSubtitle
-                }
-                Spacer()
-            }
-
+            // Error banner (only when needed)
             if let errorMessage = model.errorMessage {
-                HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
                         .font(.caption)
@@ -67,143 +34,121 @@ public struct MenuBarView: View {
                     Button("Dismiss") { model.acknowledgeError() }
                         .buttonStyle(.plain)
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(LurkTheme.accent)
+                        .foregroundStyle(HeardTheme.accent)
                 }
                 .padding(8)
-                .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var statusIcon: some View {
-        switch model.phase {
-        case .recording:
-            ZStack {
-                Circle()
-                    .fill(.red.opacity(0.15))
-                    .frame(width: 32, height: 32)
-                PulsingDot(size: 10)
-            }
-        case .processing:
-            ZStack {
-                Circle()
-                    .fill(.orange.opacity(0.15))
-                    .frame(width: 32, height: 32)
-                Image(systemName: "waveform")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.orange)
-            }
-        case .error:
-            ZStack {
-                Circle()
-                    .fill(.red.opacity(0.15))
-                    .frame(width: 32, height: 32)
-                Image(systemName: "exclamationmark.circle.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.red)
-            }
-        case .userAction:
-            ZStack {
-                Circle()
-                    .fill(.yellow.opacity(0.15))
-                    .frame(width: 32, height: 32)
-                Image(systemName: "person.crop.circle.badge.questionmark")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.yellow)
-            }
-        case .dormant:
-            ZStack {
-                Circle()
-                    .fill(.green.opacity(0.12))
-                    .frame(width: 32, height: 32)
-                Circle()
-                    .fill(.green)
-                    .frame(width: 8, height: 8)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var statusSubtitle: some View {
-        if let session = model.recordingManager.activeSession {
-            HStack(spacing: 4) {
-                Text(session.title.isEmpty ? "Meeting" : session.title)
-                    .lineLimit(1)
-                Text("·")
-                RecordingTimerView(startTime: session.startTime)
-                    .monospacedDigit()
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        } else if let job = model.queueStore.activeJob, job.stage != .complete && job.stage != .failed {
-            HStack(spacing: 4) {
-                Text(job.meetingTitle)
-                    .lineLimit(1)
-                Text("·")
-                Text(job.stage.displayName)
-                    .foregroundStyle(.orange)
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        } else {
-            Text(model.meetingDetector.isWatching ? "Listening for Teams meetings" : "Idle — not watching")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    // MARK: Actions
-
-    private var actionsSection: some View {
-        VStack(spacing: 2) {
-            MenuBarButton(
-                title: model.meetingDetector.isWatching ? "Stop Watching" : "Start Watching",
-                icon: model.meetingDetector.isWatching ? "pause.circle" : "play.circle",
-                tint: model.meetingDetector.isWatching ? .orange : .green
-            ) {
-                model.toggleWatching()
+                .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                .padding(.horizontal, 6)
+                .padding(.top, 6)
             }
 
-            if model.settingsStore.settings.developerMode {
-                if model.recordingManager.activeSession == nil {
-                    MenuBarButton(title: "Simulate Meeting", icon: "bolt.circle", tint: .purple) {
-                        model.simulateMeeting()
-                    }
-                } else {
-                    MenuBarButton(title: "End Simulation", icon: "stop.circle", tint: .red) {
-                        model.endSimulatedMeeting()
+            VStack(spacing: 0) {
+                // Watching toggle — indicator + button in one
+                watchingButton
+
+                if model.settingsStore.settings.developerMode {
+                    if model.recordingManager.activeSession == nil {
+                        MenuBarButton(title: "Simulate Meeting", icon: "bolt.circle", tint: .purple) {
+                            model.simulateMeeting()
+                        }
+                    } else {
+                        MenuBarButton(title: "End Simulation", icon: "stop.circle", tint: .red) {
+                            model.endSimulatedMeeting()
+                        }
                     }
                 }
-            }
 
-            if !model.namingCandidates.isEmpty {
-                MenuBarButton(title: "Name Speakers…", icon: "person.badge.plus", tint: .yellow) {
-                    model.selectedSettingsTab = .speakers
+                if !model.namingCandidates.isEmpty {
+                    MenuBarButton(title: "Name Speakers…", icon: "person.badge.plus", tint: .yellow) {
+                        model.selectedSettingsTab = .speakers
+                        openWindow(id: "settings")
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
+                }
+
+                MenuBarButton(title: "Open Transcripts", icon: "folder", tint: .secondary) {
+                    model.openOutputDirectory()
+                }
+
+                MenuBarButton(title: "Settings…", icon: "gearshape", tint: .secondary) {
                     openWindow(id: "settings")
                     NSApp.activate(ignoringOtherApps: true)
                 }
+                MenuBarButton(title: "Quit Heard", icon: "power", tint: .secondary) {
+                    NSApplication.shared.terminate(nil)
+                }
             }
+            .padding(.horizontal, 6)
+            .padding(.top, model.errorMessage == nil ? 4 : 2)
+            .padding(.bottom, 4)
+        }
+        .frame(width: 220)
+    }
 
-            MenuBarButton(title: "Open Transcripts", icon: "folder", tint: .blue) {
-                model.openOutputDirectory()
+    // MARK: Watching Button (indicator + toggle in one)
+
+    @ViewBuilder
+    private var watchingButton: some View {
+        if let session = model.recordingManager.activeSession {
+            // Recording state — not toggleable, just status
+            MenuBarStatusRow(icon: "record.circle", tint: .red) {
+                Text("Recording")
+                    .foregroundStyle(.red)
+                Text("·")
+                    .foregroundStyle(.tertiary)
+                Text(session.title.isEmpty ? "Meeting" : session.title)
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
+                Text("·")
+                    .foregroundStyle(.tertiary)
+                RecordingTimerView(startTime: session.startTime)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+        } else if let job = model.queueStore.activeJob, job.stage != .complete && job.stage != .failed {
+            // Processing state
+            MenuBarStatusRow(icon: "waveform", tint: .orange) {
+                Text("Processing")
+                    .foregroundStyle(.orange)
+                Text("·")
+                    .foregroundStyle(.tertiary)
+                Text(job.stage.displayName)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            // Watching / Paused — clickable toggle
+            MenuBarButton(
+                title: model.meetingDetector.isWatching ? "Watching" : "Paused",
+                icon: model.meetingDetector.isWatching ? "eye" : "pause.circle",
+                tint: model.meetingDetector.isWatching ? Color(red: 0.33, green: 0.49, blue: 0.27) : Color(red: 0.82, green: 0.7, blue: 0.2)
+            ) {
+                model.toggleWatching()
             }
         }
     }
+}
 
-    // MARK: Bottom Bar
+// MARK: - Menu Bar Status Row (non-interactive, same layout as MenuBarButton)
 
-    private var bottomBar: some View {
-        HStack(spacing: 2) {
-            MenuBarButton(title: "Settings", icon: "gearshape", tint: .secondary) {
-                openWindow(id: "settings")
-                NSApp.activate(ignoringOtherApps: true)
+private struct MenuBarStatusRow<Content: View>: View {
+    let icon: String
+    let tint: Color
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .foregroundStyle(tint)
+                .frame(width: 20)
+            HStack(spacing: 4) {
+                content
             }
+            .font(.system(.body, design: .default))
             Spacer()
-            MenuBarButton(title: "Quit", icon: "power", tint: .secondary) {
-                NSApplication.shared.terminate(nil)
-            }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
     }
 }
 
@@ -267,7 +212,7 @@ private struct JobRow: View {
                 Button { model.openTranscript(job) } label: {
                     Image(systemName: "doc.text")
                         .font(.caption2)
-                        .foregroundStyle(LurkTheme.accent)
+                        .foregroundStyle(HeardTheme.accent)
                 }
                 .buttonStyle(.plain)
                 .help("Open transcript")
@@ -355,174 +300,221 @@ public struct SettingsView: View {
     public init(model: AppModel) { self.model = model }
 
     public var body: some View {
-        TabView(selection: $model.selectedSettingsTab) {
-            generalTab
-                .tabItem { Label("General", systemImage: "gearshape") }
-                .tag(SettingsTab.general)
+        HStack(spacing: 0) {
+            // Sidebar
+            VStack(spacing: 2) {
+                ForEach(SettingsTab.allCases) { tab in
+                    SidebarItem(
+                        title: tab.label,
+                        icon: tab.icon,
+                        isSelected: model.selectedSettingsTab == tab
+                    ) {
+                        model.selectedSettingsTab = tab
+                    }
+                }
+                Spacer()
+            }
+            .padding(10)
+            .frame(width: 170)
+            .background(Color(.windowBackgroundColor).opacity(0.4))
 
-            transcriptionTab
-                .tabItem { Label("Transcription", systemImage: "waveform") }
-                .tag(SettingsTab.transcription)
+            Divider()
 
-            dictationTab
-                .tabItem { Label("Dictation", systemImage: "mic.badge.plus") }
-                .tag(SettingsTab.dictation)
-
-            speakersTab
-                .tabItem { Label("Speakers", systemImage: "person.3") }
-                .tag(SettingsTab.speakers)
-
-            permissionsTab
-                .tabItem { Label("Permissions", systemImage: "lock.shield") }
-                .tag(SettingsTab.permissions)
-
-            aboutTab
-                .tabItem { Label("About", systemImage: "info.circle") }
-                .tag(SettingsTab.about)
-        }
-        .padding(20)
-    }
-
-    // MARK: General Tab
-
-    private var generalTab: some View {
-        Form {
-            TextField("Your Name", text: settingsBinding(\.userName))
-                .help("Used as the local speaker label in transcripts")
-
-            Toggle("Launch at Login", isOn: Binding(
-                get: { model.settingsStore.settings.launchAtLogin },
-                set: { model.setLaunchAtLogin($0) }
-            ))
-
-            Toggle("Auto-Watch on Launch", isOn: settingsBinding(\.autoWatch))
-
-            Toggle("Developer Mode", isOn: settingsBinding(\.developerMode))
-                .help("Shows simulate meeting buttons in the menu bar for testing")
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Output Folder")
-                    .font(.headline)
-
-                HStack {
-                    Text(model.settingsStore.settings.outputDirectory)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(6)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
-
-                    Button("Choose…") { model.chooseOutputDirectory() }
-                    Button("Reset") { model.chooseDefaultOutputDirectory() }
-                    Button("Open") { model.openOutputDirectory() }
+            // Content
+            Group {
+                switch model.selectedSettingsTab {
+                case .general: generalSection
+                case .models: modelsSection
+                case .speakers: speakersSection
+                case .about: aboutSection
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .formStyle(.grouped)
     }
 
-    // MARK: Transcription Tab
+    // MARK: General Section (absorbs Permissions)
 
-    private var transcriptionTab: some View {
+    private var generalSection: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                // Custom Vocabulary
-                VStack(alignment: .leading, spacing: 10) {
-                    Label("Custom Vocabulary", systemImage: "textformat.abc")
-                        .font(.headline)
+                // Preferences
+                SectionCard {
+                    VStack(alignment: .leading, spacing: 14) {
+                        SettingsSectionHeader(title: "Preferences", icon: "gearshape")
 
-                    HStack {
-                        TextField("Add a term (min 3 chars)", text: $model.vocabularyDraft)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit { model.addVocabularyTerm() }
-                        Button("Add") { model.addVocabularyTerm() }
-                            .disabled(model.vocabularyDraft.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
+                        Toggle("Launch at Login", isOn: Binding(
+                            get: { model.settingsStore.settings.launchAtLogin },
+                            set: { model.setLaunchAtLogin($0) }
+                        ))
+
+                        Toggle("Auto-Watch on Launch", isOn: settingsBinding(\.autoWatch))
+
+                        Toggle("Developer Mode", isOn: settingsBinding(\.developerMode))
+                            .help("Shows simulate meeting buttons in the menu bar for testing")
                     }
-
-                    if model.settingsStore.settings.customVocabulary.isEmpty {
-                        Text("No custom terms. Add domain-specific words to improve recognition.")
-                            .foregroundStyle(.tertiary)
-                            .font(.caption)
-                    } else {
-                        FlowLayout(model.settingsStore.settings.customVocabulary, id: \.self) { term in
-                            HStack(spacing: 5) {
-                                Text(term)
-                                    .font(.callout)
-                                Button {
-                                    model.removeVocabularyTerm(term)
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(LurkTheme.accent.opacity(0.1), in: Capsule())
-                        }
-                    }
-
-                    Text("\(model.settingsStore.settings.customVocabulary.count)/50 terms")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
                 }
 
-                Divider()
+                // Custom Vocabulary
+                SectionCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SettingsSectionHeader(title: "Custom Vocabulary", icon: "textformat.abc")
 
-                // Model Status
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("Model Status", systemImage: "cpu")
-                        .font(.headline)
+                        HStack {
+                            TextField("Add a term (min 3 chars)", text: $model.vocabularyDraft)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit { model.addVocabularyTerm() }
+                            Button("Add") { model.addVocabularyTerm() }
+                                .disabled(model.vocabularyDraft.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
+                        }
 
-                    ForEach(model.modelCatalog.statuses) { item in
-                        ModelStatusCard(item: item, downloadManager: model.downloadManager)
-                    }
-
-                    if !model.downloadManager.allModelsReady {
-                        Button {
-                            model.downloadManager.downloadAllModels()
-                        } label: {
-                            HStack {
-                                Image(systemName: "arrow.down.circle.fill")
-                                Text("Download All Models")
+                        if model.settingsStore.settings.customVocabulary.isEmpty {
+                            Text("No custom terms. Add domain-specific words to improve recognition.")
+                                .foregroundStyle(.tertiary)
+                                .font(.caption)
+                        } else {
+                            FlowLayout(model.settingsStore.settings.customVocabulary, id: \.self) { term in
+                                HStack(spacing: 5) {
+                                    Text(term)
+                                        .font(.callout)
+                                    Button {
+                                        model.removeVocabularyTerm(term)
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(HeardTheme.accent.opacity(0.1), in: Capsule())
                             }
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(LurkTheme.accent)
 
-                        Text("Models download automatically on first meeting, but you can pre-download here.")
+                        Text("\(model.settingsStore.settings.customVocabulary.count)/50 terms")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
+                    }
+                }
+
+                // Output Folder
+                SectionCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SettingsSectionHeader(title: "Output Folder", icon: "folder")
+
+                        HStack {
+                            Text(model.settingsStore.settings.outputDirectory)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .foregroundStyle(.secondary)
+                                .font(.callout)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(6)
+                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+
+                            Button("Choose…") { model.chooseOutputDirectory() }
+                            Button("Reset") { model.chooseDefaultOutputDirectory() }
+                            Button("Open") { model.openOutputDirectory() }
+                        }
+                    }
+                }
+
+                // Permissions
+                SectionCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SettingsSectionHeader(title: "Permissions", icon: "lock.shield")
+
+                        ForEach(model.permissionCenter.statuses) { permission in
+                            PermissionCard(permission: permission, model: model)
+                        }
                     }
                 }
             }
-            .padding(4)
+            .padding(20)
         }
     }
 
-    // MARK: Dictation Tab
+    // MARK: Models Section (absorbs Transcription + Dictation)
 
-    private var dictationTab: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "mic.badge.plus")
-                .font(.system(size: 48))
-                .foregroundStyle(LurkTheme.accent.opacity(0.3))
-            Text("Coming in v2")
-                .font(.title3.weight(.semibold))
-            Text("Live dictation with streaming transcription.\nThe mic publisher and model catalog are ready for this.")
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .font(.callout)
+    private var modelsSection: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Model Status
+                SectionCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        SettingsSectionHeader(title: "Model Status", icon: "cpu")
+
+                        ForEach(model.modelCatalog.statuses) { item in
+                            ModelStatusCard(item: item, downloadManager: model.downloadManager)
+                        }
+
+                        if !model.downloadManager.allModelsReady {
+                            Button {
+                                model.downloadManager.downloadAllModels()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "arrow.down.circle.fill")
+                                    Text("Download All Models")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(HeardTheme.accent)
+
+                            Text("Models download automatically on first meeting, but you can pre-download here.")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+
+                // Dictation placeholder
+                SectionCard {
+                    HStack(spacing: 14) {
+                        Image(systemName: "mic.badge.plus")
+                            .font(.system(size: 24))
+                            .foregroundStyle(HeardTheme.accent.opacity(0.4))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Live Dictation")
+                                .font(.callout.weight(.medium))
+                            Text("Coming in v2 — streaming transcription with mic publisher.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Text("v2")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(HeardTheme.accent.opacity(0.1), in: Capsule())
+                            .foregroundStyle(HeardTheme.accent)
+                    }
+                }
+            }
+            .padding(20)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: Speakers Tab
+    // MARK: Speakers Section
 
-    private var speakersTab: some View {
-        VStack(alignment: .leading, spacing: 16) {
+    private var speakersSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Your Name
+            HStack(spacing: 10) {
+                Text("Your Name")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                TextField("Used as speaker label in transcripts", text: settingsBinding(\.userName))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 260)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
+
             if !model.namingCandidates.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("New speakers detected — name them:", systemImage: "person.badge.plus")
@@ -535,8 +527,9 @@ public struct SettingsView: View {
                     }
                 }
                 .padding(12)
-                .background(.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: LurkTheme.cornerRadius))
-                Divider()
+                .background(.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: HeardTheme.cornerRadius))
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
             }
 
             HStack {
@@ -561,6 +554,9 @@ public struct SettingsView: View {
                 }
                 .disabled(model.mergeSelection.count != 2)
             }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 10)
 
             Table(model.filteredSpeakers, selection: $model.mergeSelection) {
                 TableColumn("Name") { speaker in
@@ -589,31 +585,18 @@ public struct SettingsView: View {
         }
     }
 
-    // MARK: Permissions Tab
+    // MARK: About Section
 
-    private var permissionsTab: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(model.permissionCenter.statuses) { permission in
-                PermissionCard(permission: permission, model: model)
-            }
-            Spacer()
-        }
-        .padding(4)
-    }
-
-    // MARK: About Tab
-
-    private var aboutTab: some View {
+    private var aboutSection: some View {
         VStack(spacing: 0) {
             Spacer()
 
             VStack(spacing: 16) {
-                // App icon placeholder
                 ZStack {
                     RoundedRectangle(cornerRadius: 20)
                         .fill(
                             LinearGradient(
-                                colors: [LurkTheme.accent, LurkTheme.accent.opacity(0.6)],
+                                colors: [HeardTheme.accent, HeardTheme.accent.opacity(0.6)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -625,7 +608,7 @@ public struct SettingsView: View {
                 }
 
                 VStack(spacing: 4) {
-                    Text("Lurk")
+                    Text("Heard")
                         .font(.system(.title, design: .rounded).weight(.bold))
                     Text("Version 0.1.0")
                         .font(.callout)
@@ -656,6 +639,7 @@ public struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .padding(.top, 8)
+                .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -667,6 +651,81 @@ public struct SettingsView: View {
             get: { model.settingsStore.settings[keyPath: keyPath] },
             set: { model.settingsStore.settings[keyPath: keyPath] = $0 }
         )
+    }
+}
+
+// MARK: - Sidebar Item
+
+private struct SidebarItem: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 13))
+                    .foregroundStyle(isSelected ? .white : .secondary)
+                    .frame(width: 20)
+                Text(title)
+                    .font(.system(.body, design: .default))
+                    .foregroundStyle(isSelected ? .white : .primary)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                isSelected
+                    ? AnyShapeStyle(HeardTheme.accent)
+                    : AnyShapeStyle(.clear),
+                in: RoundedRectangle(cornerRadius: 7)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Settings Section Components
+
+private struct SectionCard<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: HeardTheme.cornerRadius))
+    }
+}
+
+private struct SettingsSectionHeader: View {
+    let title: String
+    let icon: String
+
+    var body: some View {
+        Label(title, systemImage: icon)
+            .font(.system(.headline, design: .rounded))
+    }
+}
+
+private struct LabeledField<Content: View>: View {
+    let label: String
+    @ViewBuilder let content: Content
+
+    init(_ label: String, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            content
+        }
     }
 }
 
@@ -689,7 +748,7 @@ private struct ModelStatusCard: View {
 
                 if let progress = downloadManager.downloadProgress[item.modelKind] {
                     ProgressView(value: progress)
-                        .tint(LurkTheme.accent)
+                        .tint(HeardTheme.accent)
                     Text("\(Int(progress * 100))%")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -723,11 +782,11 @@ private struct ModelStatusCard: View {
     }
 
     private var statusColor: Color {
-        if downloadManager.downloadProgress[item.modelKind] != nil { return LurkTheme.accent }
+        if downloadManager.downloadProgress[item.modelKind] != nil { return HeardTheme.accent }
         if downloadManager.errors[item.modelKind] != nil { return .red }
         switch item.availability {
         case .ready: return .green
-        case .downloading: return LurkTheme.accent
+        case .downloading: return HeardTheme.accent
         case .notDownloaded: return .secondary
         }
     }
@@ -786,13 +845,13 @@ private struct PermissionCard: View {
                     }
                     .font(.caption)
                     .buttonStyle(.borderedProminent)
-                    .tint(LurkTheme.accent)
+                    .tint(HeardTheme.accent)
                     .controlSize(.small)
                 }
             }
         }
         .padding(12)
-        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: LurkTheme.cornerRadius))
+        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: HeardTheme.cornerRadius))
     }
 
     private var iconName: String {
@@ -805,7 +864,7 @@ private struct PermissionCard: View {
     }
 
     private var iconColor: Color {
-        permission.state == .granted ? .green : LurkTheme.accent
+        permission.state == .granted ? .green : HeardTheme.accent
     }
 }
 
@@ -874,7 +933,7 @@ struct NamingCandidateRow: View {
                 .onSubmit { save() }
             Button("Save") { save() }
                 .buttonStyle(.borderedProminent)
-                .tint(LurkTheme.accent)
+                .tint(HeardTheme.accent)
                 .controlSize(.small)
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }

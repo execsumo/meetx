@@ -2,32 +2,32 @@ import Combine
 import Foundation
 
 public extension FileManager {
-    var lurkAppSupportDirectory: URL {
+    var heardAppSupportDirectory: URL {
         let base = urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("Lurk", isDirectory: true)
+        return base.appendingPathComponent("Heard", isDirectory: true)
     }
 
-    var lurkOutputDirectory: URL {
+    var heardOutputDirectory: URL {
         let base = urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("Lurk", isDirectory: true)
+        return base.appendingPathComponent("Heard", isDirectory: true)
     }
 
-    func ensureLurkDirectories() throws {
-        let support = lurkAppSupportDirectory
+    func ensureHeardDirectories() throws {
+        let support = heardAppSupportDirectory
         try createDirectory(at: support, withIntermediateDirectories: true)
         try createDirectory(at: support.appendingPathComponent("Models", isDirectory: true), withIntermediateDirectories: true)
         try createDirectory(at: support.appendingPathComponent("recordings", isDirectory: true), withIntermediateDirectories: true)
-        try createDirectory(at: lurkOutputDirectory, withIntermediateDirectories: true)
+        try createDirectory(at: heardOutputDirectory, withIntermediateDirectories: true)
     }
 }
 
 public enum AppPaths {
     public static var queueFile: URL {
-        FileManager.default.lurkAppSupportDirectory.appendingPathComponent("pipeline_queue.json")
+        FileManager.default.heardAppSupportDirectory.appendingPathComponent("pipeline_queue.json")
     }
 
     public static var speakersFile: URL {
-        FileManager.default.lurkAppSupportDirectory.appendingPathComponent("speakers.json")
+        FileManager.default.heardAppSupportDirectory.appendingPathComponent("speakers.json")
     }
 }
 

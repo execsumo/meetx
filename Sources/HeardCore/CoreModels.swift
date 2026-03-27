@@ -169,7 +169,7 @@ public struct AppSettings: Codable, Equatable {
         userName: "",
         launchAtLogin: false,
         autoWatch: true,
-        outputDirectory: FileManager.default.lurkOutputDirectory.path,
+        outputDirectory: FileManager.default.heardOutputDirectory.path,
         customVocabulary: [],
         developerMode: false
     )
@@ -261,11 +261,27 @@ public struct TranscriptDocument {
 
 public enum SettingsTab: String, CaseIterable, Identifiable {
     case general
-    case transcription
-    case dictation
     case speakers
-    case permissions
+    case models
     case about
 
     public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .general: return "General"
+        case .models: return "Models"
+        case .speakers: return "Speakers"
+        case .about: return "About"
+        }
+    }
+
+    public var icon: String {
+        switch self {
+        case .general: return "gearshape"
+        case .models: return "cpu"
+        case .speakers: return "person.3"
+        case .about: return "info.circle"
+        }
+    }
 }

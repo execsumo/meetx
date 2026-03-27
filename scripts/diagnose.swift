@@ -1,5 +1,5 @@
 #!/usr/bin/env swift
-// Diagnostic script: run while in a Teams meeting to see what Lurk sees.
+// Diagnostic script: run while in a Teams meeting to see what Heard sees.
 
 import AppKit
 import IOKit.pwr_mgt

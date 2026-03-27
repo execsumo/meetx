@@ -16,7 +16,7 @@ The app builds cleanly with `swift build` and runs as a menu bar app on macOS 14
 ### Audio Capture
 - **App audio**: `CATapDescription` process tap on the Teams PID, recorded via `AVAudioEngine` to WAV
 - **Microphone**: Separate `AVAudioEngine` instance recording to WAV
-- Both tracks saved to `~/Library/Application Support/Lurk/recordings/`
+- Both tracks saved to `~/Library/Application Support/Heard/recordings/`
 - Mic delay calibration stored per session for alignment
 - 4-hour max recording duration with automatic split and re-start
 - Temp file cleanup on app launch (removes stale `.wav` files older than 48 hours)
@@ -51,43 +51,43 @@ The app builds cleanly with `swift build` and runs as a menu bar app on macOS 14
 - Quit button in menu bar dropdown
 
 ### App Bundle
-- `Info.plist` with `LSUIElement` (menu bar app), `NSMicrophoneUsageDescription`, bundle ID `com.execsumo.lurk`
-- `Lurk.entitlements` with audio-input only (no sandbox per spec)
+- `Info.plist` with `LSUIElement` (menu bar app), `NSMicrophoneUsageDescription`, bundle ID `com.execsumo.heard`
+- `Heard.entitlements` with audio-input only (no sandbox per spec)
 - `scripts/bundle.sh` builds via SPM, creates `.app` bundle, ad-hoc signs
 - Supports `--release` and `--sign IDENTITY` flags for distribution builds
 
 ### Testing
-- `LurkTests` executable target with 30+ tests covering: VadSegmentMap, cosine distance, SpeakerMatcher, SegmentMerger, AudioPreprocessor, TranscriptWriter, SpeakerStore, PipelineQueueStore
+- `HeardTests` executable target with 30+ tests covering: VadSegmentMap, cosine distance, SpeakerMatcher, SegmentMerger, AudioPreprocessor, TranscriptWriter, SpeakerStore, PipelineQueueStore
 - Custom lightweight test harness (no XCTest/Xcode dependency)
-- Run with `swift run LurkTests`
+- Run with `swift run HeardTests`
 
 ### Persistence
 - `SettingsStore`: UserDefaults-backed app settings
-- `SpeakerStore`: JSON file at `~/Library/Application Support/Lurk/speakers.json`
-- `PipelineQueueStore`: JSON file at `~/Library/Application Support/Lurk/queue.json`
+- `SpeakerStore`: JSON file at `~/Library/Application Support/Heard/speakers.json`
+- `PipelineQueueStore`: JSON file at `~/Library/Application Support/Heard/queue.json`
 
 ## Architecture
 
 | Target | Purpose |
 |--------|---------|
-| `LurkCore` (library) | All models, services, views, stores |
-| `Lurk` (executable) | App entry point, imports LurkCore |
-| `LurkTests` (executable) | Test runner, imports LurkCore |
+| `HeardCore` (library) | All models, services, views, stores |
+| `Heard` (executable) | App entry point, imports HeardCore |
+| `HeardTests` (executable) | Test runner, imports HeardCore |
 
 | File | Purpose |
 |------|---------|
 | `Package.swift` | SPM config, macOS 14.2+, FluidAudio dependency |
-| `Sources/Lurk/MTApp.swift` | `@main` entry, MenuBarExtra + Window scenes |
-| `Sources/LurkCore/AppModel.swift` | Central state, action handlers, lifecycle |
-| `Sources/LurkCore/CoreModels.swift` | AppPhase, PipelineJob, SpeakerProfile, AppSettings, etc. |
-| `Sources/LurkCore/Services.swift` | MeetingDetector, RecordingManager, PipelineProcessor, PermissionCenter, TranscriptWriter |
-| `Sources/LurkCore/Stores.swift` | SettingsStore, SpeakerStore, PipelineQueueStore, FileManager extensions |
-| `Sources/LurkCore/Views.swift` | MenuBarView, SettingsView, all tabs and components |
-| `Sources/LurkCore/AudioProcessing.swift` | AudioPreprocessor, VadSegmentMap, PreprocessedTrack |
-| `Sources/LurkCore/SpeakerAssignment.swift` | SpeakerMatcher, SegmentMerger, cosineDistance |
-| `Sources/LurkCore/ModelDownloadManager.swift` | Pre-download manager for FluidAudio models |
+| `Sources/Heard/MTApp.swift` | `@main` entry, MenuBarExtra + Window scenes |
+| `Sources/HeardCore/AppModel.swift` | Central state, action handlers, lifecycle |
+| `Sources/HeardCore/CoreModels.swift` | AppPhase, PipelineJob, SpeakerProfile, AppSettings, etc. |
+| `Sources/HeardCore/Services.swift` | MeetingDetector, RecordingManager, PipelineProcessor, PermissionCenter, TranscriptWriter |
+| `Sources/HeardCore/Stores.swift` | SettingsStore, SpeakerStore, PipelineQueueStore, FileManager extensions |
+| `Sources/HeardCore/Views.swift` | MenuBarView, SettingsView, all tabs and components |
+| `Sources/HeardCore/AudioProcessing.swift` | AudioPreprocessor, VadSegmentMap, PreprocessedTrack |
+| `Sources/HeardCore/SpeakerAssignment.swift` | SpeakerMatcher, SegmentMerger, cosineDistance |
+| `Sources/HeardCore/ModelDownloadManager.swift` | Pre-download manager for FluidAudio models |
 | `Info.plist` | App bundle metadata |
-| `Lurk.entitlements` | Audio input entitlement |
+| `Heard.entitlements` | Audio input entitlement |
 | `scripts/bundle.sh` | Build + bundle script |
 
 ## Next Steps
@@ -97,10 +97,10 @@ The app builds cleanly with `swift build` and runs as a menu bar app on macOS 14
 3. **App icon** — Create and include an app icon for the bundle
 4. **CI/CD pipeline** — GitHub Actions workflow for build, sign, notarize, publish
 5. **DMG packaging** — Create distributable disk image for direct download
-6. **Homebrew Cask formula** — For `brew install lurk`
+6. **Homebrew Cask formula** — For `brew install heard`
 
 ## Known Issues
 
-- Running via `swift run` in a terminal causes macOS to attribute microphone permission to the terminal app (e.g., Ghostty) rather than Lurk. Use `./scripts/bundle.sh && open build/Lurk.app` instead.
+- Running via `swift run` in a terminal causes macOS to attribute microphone permission to the terminal app (e.g., Ghostty) rather than Heard. Use `./scripts/bundle.sh && open build/Heard.app` instead.
 - The `.window` style MenuBarExtra panel has a fixed max height; if many jobs accumulate, the bottom of the panel may clip.
 - Simulated meetings produce very short recordings that fail in the pipeline (expected — they exist for UI testing, not audio testing).

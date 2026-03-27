@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Build Lurk.app from Swift Package Manager output.
+# Build Heard.app from Swift Package Manager output.
 # Usage: ./scripts/bundle.sh [--release] [--sign IDENTITY]
 #
 # Options:
@@ -23,7 +23,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-APP_NAME="Lurk"
+APP_NAME="Heard"
 APP_BUNDLE="$OUTPUT_DIR/$APP_NAME.app"
 
 echo "==> Building $APP_NAME ($BUILD_CONFIG)..."
@@ -55,13 +55,13 @@ cp "$REPO_ROOT/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 
 # Copy entitlements (for reference; used during signing)
-cp "$REPO_ROOT/Lurk.entitlements" "$APP_BUNDLE/Contents/Resources/Lurk.entitlements"
+cp "$REPO_ROOT/Heard.entitlements" "$APP_BUNDLE/Contents/Resources/Heard.entitlements"
 
 # Code sign if identity provided
 if [[ -n "$SIGN_IDENTITY" ]]; then
     echo "==> Signing with identity: $SIGN_IDENTITY"
     codesign --force --options runtime \
-        --entitlements "$REPO_ROOT/Lurk.entitlements" \
+        --entitlements "$REPO_ROOT/Heard.entitlements" \
         --sign "$SIGN_IDENTITY" \
         "$APP_BUNDLE"
     echo "==> Verifying signature..."
@@ -70,7 +70,7 @@ else
     # Ad-hoc sign so macOS will run it locally
     echo "==> Ad-hoc signing..."
     codesign --force --sign - \
-        --entitlements "$REPO_ROOT/Lurk.entitlements" \
+        --entitlements "$REPO_ROOT/Heard.entitlements" \
         "$APP_BUNDLE"
 fi
 

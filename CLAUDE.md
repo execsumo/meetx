@@ -2,15 +2,15 @@
 
 ## Project Overview
 
-Lurk is a macOS menu bar app that auto-detects Microsoft Teams meetings, records dual-track audio, and produces on-device transcripts with speaker diarization. See `spec.md` for the full product specification.
+Heard is a macOS menu bar app that auto-detects Microsoft Teams meetings, records dual-track audio, and produces on-device transcripts with speaker diarization. See `spec.md` for the full product specification.
 
 ## Build & Run
 
 ```bash
 swift build                # compile
-swift run Lurk             # compile and launch (terminal — mic permission goes to terminal app)
-./scripts/bundle.sh        # build Lurk.app bundle (ad-hoc signed)
-open build/Lurk.app        # launch as proper app (mic permission goes to Lurk)
+swift run Heard            # compile and launch (terminal — mic permission goes to terminal app)
+./scripts/bundle.sh        # build Heard.app bundle (ad-hoc signed)
+open build/Heard.app       # launch as proper app (mic permission goes to Heard)
 swift package clean        # clean build artifacts
 ```
 
@@ -20,14 +20,14 @@ No Xcode project — this is a Swift Package Manager executable. macOS 14.2+ req
 
 - `spec.md` — Product spec (source of truth for features and architecture)
 - `handoff.md` — Current implementation status and next steps
-- `Sources/Lurk/MTApp.swift` — App entry point
-- `Sources/LurkCore/AppModel.swift` — Central state orchestration
-- `Sources/LurkCore/Services.swift` — Detection, recording, pipeline, permissions
-- `Sources/LurkCore/Views.swift` — All UI (menu bar dropdown + settings window)
-- `Sources/LurkCore/CoreModels.swift` — Data types
-- `Sources/LurkCore/Stores.swift` — Persistence layer
+- `Sources/Heard/MTApp.swift` — App entry point
+- `Sources/HeardCore/AppModel.swift` — Central state orchestration
+- `Sources/HeardCore/Services.swift` — Detection, recording, pipeline, permissions
+- `Sources/HeardCore/Views.swift` — All UI (menu bar dropdown + settings window)
+- `Sources/HeardCore/CoreModels.swift` — Data types
+- `Sources/HeardCore/Stores.swift` — Persistence layer
 - `Info.plist` — App bundle metadata
-- `Lurk.entitlements` — Entitlements (audio input only, no sandbox)
+- `Heard.entitlements` — Entitlements (audio input only, no sandbox)
 - `scripts/bundle.sh` — Build script for .app bundle
 
 ## Working Rules
@@ -46,8 +46,8 @@ No Xcode project — this is a Swift Package Manager executable. macOS 14.2+ req
 
 - `MenuBarExtra` with `.window` style — renders SwiftUI views in a floating panel
 - `Window` scene with id "settings" — opened via `@Environment(\.openWindow)`
-- Library target `LurkCore` + executable `Lurk` + test executable `LurkTests`
-- All persistence is JSON files in `~/Library/Application Support/Lurk/`
+- Library target `HeardCore` + executable `Heard` + test executable `HeardTests`
+- All persistence is JSON files in `~/Library/Application Support/Heard/`
 - Pipeline stages run sequentially on a background task, one job at a time
 - Meeting detection polls every 3 seconds via `IOPMCopyAssertionsByProcess()`
 - Audio capture uses `CATapDescription` (app tap) + `AVAudioEngine` (mic)
@@ -55,17 +55,17 @@ No Xcode project — this is a Swift Package Manager executable. macOS 14.2+ req
 ## Testing
 
 ```bash
-swift run LurkTests        # run the test suite
+swift run HeardTests        # run the test suite
 ```
 
 Manual testing:
-1. `./scripts/bundle.sh && open build/Lurk.app`
+1. `./scripts/bundle.sh && open build/Heard.app`
 2. Click menu bar icon → "Simulate Meeting Start" to exercise the full flow
 3. Use the Settings button to open preferences
 
 ## Gotchas
 
-- Running via `swift run` attributes mic permission to the terminal app, not Lurk. Use the .app bundle for proper permissions.
+- Running via `swift run` attributes mic permission to the terminal app, not Heard. Use the .app bundle for proper permissions.
 - The `.window` MenuBarExtra panel has a max height — keep the dropdown content compact
 - FluidAudio dependency is declared but models aren't available as CoreML yet
 - The worktree is at `.claude/worktrees/` — run commands from the worktree dir, not the main repo

@@ -1,18 +1,18 @@
 import AppKit
-import LurkCore
+import HeardCore
 import SwiftUI
 
 @main
-struct LurkApp: App {
+struct HeardApp: App {
     @StateObject private var appModel = AppModel.bootstrap()
 
     var body: some Scene {
-        MenuBarExtra("Lurk", systemImage: appModel.menuBarIconName) {
+        MenuBarExtra("Heard", systemImage: appModel.menuBarIconName) {
             MenuBarView(model: appModel)
         }
         .menuBarExtraStyle(.window)
 
-        Window("Lurk Settings", id: "settings") {
+        Window("Heard Settings", id: "settings") {
             SettingsView(model: appModel)
                 .frame(minWidth: 760, minHeight: 520)
                 .onAppear {
