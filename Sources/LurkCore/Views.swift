@@ -1,5 +1,15 @@
 import SwiftUI
 
+// MARK: - Theme
+
+private enum LurkTheme {
+    static let accent = Color.indigo
+    static let cardBackground = Color(.windowBackgroundColor).opacity(0.5)
+    static let cardBorder = Color.primary.opacity(0.06)
+    static let sectionSpacing: CGFloat = 12
+    static let cornerRadius: CGFloat = 10
+}
+
 // MARK: - Menu Bar Dropdown
 
 public struct MenuBarView: View {
@@ -9,173 +19,302 @@ public struct MenuBarView: View {
     public init(model: AppModel) { self.model = model }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Status + core actions
-            statusSection
+        VStack(spacing: 0) {
+            statusHeader
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
 
-            Divider()
+            Divider().padding(.horizontal, 12)
 
-            // Primary actions always visible
             actionsSection
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
 
-            // Queue at bottom — can be clipped if many jobs
             if !model.queueStore.recentJobs.isEmpty {
-                Divider()
+                Divider().padding(.horizontal, 12)
+
                 queueSection
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
             }
+
+            Divider().padding(.horizontal, 12)
+
+            bottomBar
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
         }
-        .padding(14)
         .frame(width: 340)
     }
 
-    private var statusSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                if model.phase == .recording {
-                    PulsingDot()
-                } else {
-                    Circle()
-                        .fill(statusColor)
-                        .frame(width: 8, height: 8)
-                }
-                Text(model.phase.title)
-                    .font(.headline)
-            }
+    // MARK: Status Header
 
-            if let session = model.recordingManager.activeSession {
-                HStack {
-                    Text(session.title.isEmpty ? "Meeting" : session.title)
-                    Spacer()
-                    RecordingTimerView(startTime: session.startTime)
-                        .monospacedDigit()
-                        .foregroundStyle(.red)
+    private var statusHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                statusIcon
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.phase.title)
+                        .font(.system(.headline, design: .rounded))
+                    statusSubtitle
                 }
-                .foregroundStyle(.secondary)
-            } else if let job = model.queueStore.activeJob, job.stage != .complete && job.stage != .failed {
-                HStack {
-                    Text(job.meetingTitle)
-                    Spacer()
-                    Text(job.stage.displayName)
-                        .foregroundStyle(.orange)
-                    if let stageStart = job.stageStartTime {
-                        RecordingTimerView(startTime: stageStart)
-                            .monospacedDigit()
-                            .foregroundStyle(.orange)
-                    }
-                }
-                .foregroundStyle(.secondary)
-            } else {
-                Text(model.meetingDetector.isWatching ? "Auto-watch enabled" : "Idle")
-                    .foregroundStyle(.secondary)
+                Spacer()
             }
 
             if let errorMessage = model.errorMessage {
-                HStack(alignment: .top) {
+                HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
+                        .font(.caption)
                     Text(errorMessage)
-                        .font(.footnote)
+                        .font(.caption)
                         .foregroundStyle(.red)
-                }
-                Button("Dismiss") { model.acknowledgeError() }
-                    .buttonStyle(.link)
-                    .font(.footnote)
-            }
-        }
-    }
-
-    private var statusColor: Color {
-        switch model.phase {
-        case .dormant: return .green
-        case .recording: return .red
-        case .processing: return .orange
-        case .error: return .red
-        case .userAction: return .yellow
-        }
-    }
-
-    private var queueSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Recent Jobs")
-                .font(.subheadline.weight(.semibold))
-
-            if model.queueStore.recentJobs.isEmpty {
-                Text("No meetings processed yet.")
-                    .foregroundStyle(.tertiary)
-                    .font(.footnote)
-            } else {
-                ForEach(model.queueStore.recentJobs) { job in
-                    HStack(spacing: 8) {
-                        Image(systemName: job.stage == .complete ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundStyle(job.stage == .complete ? .green : .red)
-                            .font(.footnote)
-                        Text(job.meetingTitle)
-                            .lineLimit(1)
-                        Spacer()
-                        if job.transcriptPath != nil {
-                            Button("Open") { model.openTranscript(job) }
-                                .buttonStyle(.link)
-                                .font(.footnote)
-                        }
-                        if job.stage == .failed {
-                            Button("Retry") { model.retry(job) }
-                                .buttonStyle(.link)
-                                .font(.footnote)
-                        }
-                        Button {
-                            model.dismissJob(job)
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
+                        .lineLimit(2)
+                    Spacer()
+                    Button("Dismiss") { model.acknowledgeError() }
                         .buttonStyle(.plain)
-                        .help("Remove from list")
-                    }
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(LurkTheme.accent)
                 }
+                .padding(8)
+                .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
             }
         }
     }
+
+    @ViewBuilder
+    private var statusIcon: some View {
+        switch model.phase {
+        case .recording:
+            ZStack {
+                Circle()
+                    .fill(.red.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                PulsingDot(size: 10)
+            }
+        case .processing:
+            ZStack {
+                Circle()
+                    .fill(.orange.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                Image(systemName: "waveform")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.orange)
+            }
+        case .error:
+            ZStack {
+                Circle()
+                    .fill(.red.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.red)
+            }
+        case .userAction:
+            ZStack {
+                Circle()
+                    .fill(.yellow.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                Image(systemName: "person.crop.circle.badge.questionmark")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.yellow)
+            }
+        case .dormant:
+            ZStack {
+                Circle()
+                    .fill(.green.opacity(0.12))
+                    .frame(width: 32, height: 32)
+                Circle()
+                    .fill(.green)
+                    .frame(width: 8, height: 8)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var statusSubtitle: some View {
+        if let session = model.recordingManager.activeSession {
+            HStack(spacing: 4) {
+                Text(session.title.isEmpty ? "Meeting" : session.title)
+                    .lineLimit(1)
+                Text("·")
+                RecordingTimerView(startTime: session.startTime)
+                    .monospacedDigit()
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        } else if let job = model.queueStore.activeJob, job.stage != .complete && job.stage != .failed {
+            HStack(spacing: 4) {
+                Text(job.meetingTitle)
+                    .lineLimit(1)
+                Text("·")
+                Text(job.stage.displayName)
+                    .foregroundStyle(.orange)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        } else {
+            Text(model.meetingDetector.isWatching ? "Listening for Teams meetings" : "Idle — not watching")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    // MARK: Actions
 
     private var actionsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button(model.meetingDetector.isWatching ? "Stop Watching" : "Start Watching") {
+        VStack(spacing: 2) {
+            MenuBarButton(
+                title: model.meetingDetector.isWatching ? "Stop Watching" : "Start Watching",
+                icon: model.meetingDetector.isWatching ? "pause.circle" : "play.circle",
+                tint: model.meetingDetector.isWatching ? .orange : .green
+            ) {
                 model.toggleWatching()
             }
 
             if model.settingsStore.settings.developerMode {
                 if model.recordingManager.activeSession == nil {
-                    Button("Simulate Meeting Start") {
+                    MenuBarButton(title: "Simulate Meeting", icon: "bolt.circle", tint: .purple) {
                         model.simulateMeeting()
                     }
                 } else {
-                    Button("Simulate Meeting End") {
+                    MenuBarButton(title: "End Simulation", icon: "stop.circle", tint: .red) {
                         model.endSimulatedMeeting()
                     }
                 }
             }
 
             if !model.namingCandidates.isEmpty {
-                Button("Name Speakers...") {
+                MenuBarButton(title: "Name Speakers…", icon: "person.badge.plus", tint: .yellow) {
                     model.selectedSettingsTab = .speakers
                     openWindow(id: "settings")
                     NSApp.activate(ignoringOtherApps: true)
                 }
             }
 
-            Button("Open Transcripts Folder") {
+            MenuBarButton(title: "Open Transcripts", icon: "folder", tint: .blue) {
                 model.openOutputDirectory()
             }
+        }
+    }
 
-            Button("Settings...") {
+    // MARK: Queue
+
+    private var queueSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Recent")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+
+            ForEach(model.queueStore.recentJobs) { job in
+                JobRow(job: job, model: model)
+            }
+        }
+    }
+
+    // MARK: Bottom Bar
+
+    private var bottomBar: some View {
+        HStack(spacing: 2) {
+            MenuBarButton(title: "Settings", icon: "gearshape", tint: .secondary) {
                 openWindow(id: "settings")
                 NSApp.activate(ignoringOtherApps: true)
             }
-
-            Button("Quit") {
+            Spacer()
+            MenuBarButton(title: "Quit", icon: "power", tint: .secondary) {
                 NSApplication.shared.terminate(nil)
             }
         }
+    }
+}
+
+// MARK: - Menu Bar Button
+
+private struct MenuBarButton: View {
+    let title: String
+    let icon: String
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 13))
+                    .foregroundStyle(tint)
+                    .frame(width: 20)
+                Text(title)
+                    .font(.system(.body, design: .default))
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+        }
+        .buttonStyle(MenuBarButtonStyle())
+    }
+}
+
+private struct MenuBarButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                configuration.isPressed
+                    ? Color.primary.opacity(0.08)
+                    : Color.clear,
+                in: RoundedRectangle(cornerRadius: 6)
+            )
+    }
+}
+
+// MARK: - Job Row
+
+private struct JobRow: View {
+    let job: PipelineJob
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: job.stage == .complete ? "checkmark.circle.fill" : job.stage == .failed ? "xmark.circle.fill" : "clock.fill")
+                .font(.caption)
+                .foregroundStyle(job.stage == .complete ? .green : job.stage == .failed ? .red : .orange)
+
+            Text(job.meetingTitle)
+                .font(.caption)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if job.transcriptPath != nil {
+                Button { model.openTranscript(job) } label: {
+                    Image(systemName: "doc.text")
+                        .font(.caption2)
+                        .foregroundStyle(LurkTheme.accent)
+                }
+                .buttonStyle(.plain)
+                .help("Open transcript")
+            }
+
+            if job.stage == .failed {
+                Button { model.retry(job) } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+                .buttonStyle(.plain)
+                .help("Retry")
+            }
+
+            Button { model.dismissJob(job) } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Remove")
+        }
+        .padding(.vertical, 3)
     }
 }
 
@@ -213,14 +352,15 @@ public struct RecordingTimerView: View {
 // MARK: - Pulsing Recording Dot
 
 public struct PulsingDot: View {
+    var size: CGFloat = 8
     @State private var isPulsing = false
 
-    public init() {}
+    public init(size: CGFloat = 8) { self.size = size }
 
     public var body: some View {
         Circle()
             .fill(.red)
-            .frame(width: 8, height: 8)
+            .frame(width: size, height: size)
             .opacity(isPulsing ? 0.3 : 1.0)
             .animation(
                 .easeInOut(duration: 0.4).repeatForever(autoreverses: true),
@@ -294,9 +434,9 @@ public struct SettingsView: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(6)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
 
-                    Button("Choose...") { model.chooseOutputDirectory() }
+                    Button("Choose…") { model.chooseOutputDirectory() }
                     Button("Reset") { model.chooseDefaultOutputDirectory() }
                     Button("Open") { model.openOutputDirectory() }
                 }
@@ -308,93 +448,96 @@ public struct SettingsView: View {
     // MARK: Transcription Tab
 
     private var transcriptionTab: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Custom Vocabulary")
-                .font(.headline)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Custom Vocabulary
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Custom Vocabulary", systemImage: "textformat.abc")
+                        .font(.headline)
 
-            HStack {
-                TextField("Add a term (min 3 chars)", text: $model.vocabularyDraft)
-                    .onSubmit { model.addVocabularyTerm() }
-                Button("Add") { model.addVocabularyTerm() }
-                    .disabled(model.vocabularyDraft.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
-            }
-
-            if model.settingsStore.settings.customVocabulary.isEmpty {
-                Text("No custom terms. Add domain-specific words to improve recognition.")
-                    .foregroundStyle(.tertiary)
-                    .font(.footnote)
-            } else {
-                FlowLayout(model.settingsStore.settings.customVocabulary, id: \.self) { term in
-                    HStack(spacing: 6) {
-                        Text(term)
-                        Button {
-                            model.removeVocabularyTerm(term)
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                        }
-                        .buttonStyle(.plain)
+                    HStack {
+                        TextField("Add a term (min 3 chars)", text: $model.vocabularyDraft)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { model.addVocabularyTerm() }
+                        Button("Add") { model.addVocabularyTerm() }
+                            .disabled(model.vocabularyDraft.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(.quaternary, in: Capsule())
-                }
-            }
 
-            Text("\(model.settingsStore.settings.customVocabulary.count)/50 terms")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
-            Divider()
-
-            Text("Model Status")
-                .font(.headline)
-
-            ForEach(model.modelCatalog.statuses) { item in
-                HStack {
-                    Text(item.modelKind.displayName)
-                    Spacer()
-                    if let progress = model.downloadManager.downloadProgress[item.modelKind] {
-                        ProgressView(value: progress)
-                            .frame(width: 100)
-                        Text("\(Int(progress * 100))%")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                    } else if let error = model.downloadManager.errors[item.modelKind] {
-                        Text(error)
-                            .foregroundStyle(.red)
-                            .lineLimit(1)
-                            .font(.footnote)
+                    if model.settingsStore.settings.customVocabulary.isEmpty {
+                        Text("No custom terms. Add domain-specific words to improve recognition.")
+                            .foregroundStyle(.tertiary)
+                            .font(.caption)
                     } else {
-                        Text(item.detail)
-                            .foregroundStyle(item.availability == .ready ? .green : .secondary)
+                        FlowLayout(model.settingsStore.settings.customVocabulary, id: \.self) { term in
+                            HStack(spacing: 5) {
+                                Text(term)
+                                    .font(.callout)
+                                Button {
+                                    model.removeVocabularyTerm(term)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(LurkTheme.accent.opacity(0.1), in: Capsule())
+                        }
+                    }
+
+                    Text("\(model.settingsStore.settings.customVocabulary.count)/50 terms")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Divider()
+
+                // Model Status
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Model Status", systemImage: "cpu")
+                        .font(.headline)
+
+                    ForEach(model.modelCatalog.statuses) { item in
+                        ModelStatusCard(item: item, downloadManager: model.downloadManager)
+                    }
+
+                    if !model.downloadManager.allModelsReady {
+                        Button {
+                            model.downloadManager.downloadAllModels()
+                        } label: {
+                            HStack {
+                                Image(systemName: "arrow.down.circle.fill")
+                                Text("Download All Models")
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(LurkTheme.accent)
+
+                        Text("Models download automatically on first meeting, but you can pre-download here.")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
                     }
                 }
             }
-
-            if !model.downloadManager.allModelsReady {
-                Button("Download All Models") {
-                    model.downloadManager.downloadAllModels()
-                }
-                Text("Models download automatically on first meeting, but you can pre-download here.")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-            }
+            .padding(4)
         }
-        .padding(.horizontal, 4)
     }
 
     // MARK: Dictation Tab
 
     private var dictationTab: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             Image(systemName: "mic.badge.plus")
-                .font(.system(size: 40))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 48))
+                .foregroundStyle(LurkTheme.accent.opacity(0.3))
             Text("Coming in v2")
                 .font(.title3.weight(.semibold))
             Text("Live dictation with streaming transcription.\nThe mic publisher and model catalog are ready for this.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .font(.callout)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -407,17 +550,28 @@ public struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("New speakers detected — name them:", systemImage: "person.badge.plus")
                         .font(.headline)
+                        .foregroundStyle(.orange)
                     ForEach(model.namingCandidates) { candidate in
                         NamingCandidateRow(candidate: candidate) { name in
                             model.saveSpeakerName(candidate: candidate, name: name)
                         }
                     }
                 }
+                .padding(12)
+                .background(.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: LurkTheme.cornerRadius))
                 Divider()
             }
 
             HStack {
-                TextField("Search speakers", text: $model.speakerFilter)
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.tertiary)
+                    TextField("Search speakers", text: $model.speakerFilter)
+                        .textFieldStyle(.plain)
+                }
+                .padding(6)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+
                 Picker("Sort", selection: $model.speakerSortMode) {
                     ForEach(SpeakerSortMode.allCases) { sortMode in
                         Text(sortMode.displayName).tag(sortMode)
@@ -439,6 +593,7 @@ public struct SettingsView: View {
                 }
                 TableColumn("Meetings") { speaker in
                     Text("\(speaker.meetingCount)")
+                        .monospacedDigit()
                 }
                 TableColumn("First Seen") { speaker in
                     Text(speaker.firstSeen.formatted(date: .abbreviated, time: .omitted))
@@ -460,63 +615,72 @@ public struct SettingsView: View {
     // MARK: Permissions Tab
 
     private var permissionsTab: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 12) {
             ForEach(model.permissionCenter.statuses) { permission in
-                HStack(alignment: .top, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(permission.title)
-                                .font(.headline)
-                            if permission.id == "microphone" {
-                                Text("Required")
-                                    .font(.caption)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(.red.opacity(0.15), in: Capsule())
-                                    .foregroundStyle(.red)
-                            }
-                        }
-                        Text(permission.purpose)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text(permission.state.badge)
-                        .foregroundStyle(permission.state == .granted ? .green : .orange)
-                        .font(.footnote.weight(.medium))
-                    Button("Grant...") {
-                        switch permission.id {
-                        case "microphone": model.permissionCenter.requestMicrophone()
-                        case "screen": model.permissionCenter.openScreenRecordingSettings()
-                        case "accessibility": model.permissionCenter.openAccessibilitySettings()
-                        default: break
-                        }
-                    }
-                    .disabled(permission.state == .granted)
-                }
+                PermissionCard(permission: permission, model: model)
             }
             Spacer()
         }
-        .padding(.horizontal, 4)
+        .padding(4)
     }
 
     // MARK: About Tab
 
     private var aboutTab: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Lurk")
-                .font(.title2.weight(.semibold))
-            Text("Version 0.1.0")
-            Text("Distribution: Direct Download")
-                .foregroundStyle(.secondary)
+        VStack(spacing: 0) {
+            Spacer()
+
+            VStack(spacing: 16) {
+                // App icon placeholder
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(
+                            LinearGradient(
+                                colors: [LurkTheme.accent, LurkTheme.accent.opacity(0.6)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 80, height: 80)
+                    Image(systemName: "waveform.and.mic")
+                        .font(.system(size: 36, weight: .medium))
+                        .foregroundStyle(.white)
+                }
+
+                VStack(spacing: 4) {
+                    Text("Lurk")
+                        .font(.system(.title, design: .rounded).weight(.bold))
+                    Text("Version 0.1.0")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text("Automatic meeting detection, dual-track recording,\non-device transcription and speaker diarization.")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .font(.callout)
+
+                HStack(spacing: 16) {
+                    AboutBadge(icon: "lock.shield.fill", text: "On-Device")
+                    AboutBadge(icon: "icloud.slash.fill", text: "No Cloud")
+                    AboutBadge(icon: "brain.head.profile.fill", text: "No LLM")
+                }
+
+                Text("Powered by FluidAudio · Parakeet TDT · Silero VAD · WeSpeaker")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer()
+
             Divider()
-            Text("Automatic meeting detection, dual-track recording, on-device transcription and speaker diarization. No cloud, no LLM, no external API.")
-                .foregroundStyle(.secondary)
-            Text("Powered by FluidAudio, Parakeet TDT, Silero VAD, and WeSpeaker.")
+
+            Text("Direct Download Distribution")
+                .font(.caption)
                 .foregroundStyle(.tertiary)
-                .font(.footnote)
+                .padding(.top, 8)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Helpers
@@ -526,6 +690,165 @@ public struct SettingsView: View {
             get: { model.settingsStore.settings[keyPath: keyPath] },
             set: { model.settingsStore.settings[keyPath: keyPath] = $0 }
         )
+    }
+}
+
+// MARK: - Model Status Card
+
+private struct ModelStatusCard: View {
+    let item: ModelStatusItem
+    @ObservedObject var downloadManager: ModelDownloadManager
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: statusIcon)
+                .font(.system(size: 16))
+                .foregroundStyle(statusColor)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.modelKind.displayName)
+                    .font(.callout.weight(.medium))
+
+                if let progress = downloadManager.downloadProgress[item.modelKind] {
+                    ProgressView(value: progress)
+                        .tint(LurkTheme.accent)
+                    Text("\(Int(progress * 100))%")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                } else if let error = downloadManager.errors[item.modelKind] {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(1)
+                } else {
+                    Text(item.detail)
+                        .font(.caption)
+                        .foregroundStyle(item.availability == .ready ? .green : .secondary)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(10)
+        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var statusIcon: String {
+        if downloadManager.downloadProgress[item.modelKind] != nil { return "arrow.down.circle" }
+        if downloadManager.errors[item.modelKind] != nil { return "exclamationmark.triangle" }
+        switch item.availability {
+        case .ready: return "checkmark.circle.fill"
+        case .downloading: return "arrow.down.circle"
+        case .notDownloaded: return "arrow.down.to.line"
+        }
+    }
+
+    private var statusColor: Color {
+        if downloadManager.downloadProgress[item.modelKind] != nil { return LurkTheme.accent }
+        if downloadManager.errors[item.modelKind] != nil { return .red }
+        switch item.availability {
+        case .ready: return .green
+        case .downloading: return LurkTheme.accent
+        case .notDownloaded: return .secondary
+        }
+    }
+}
+
+// MARK: - Permission Card
+
+private struct PermissionCard: View {
+    let permission: PermissionStatus
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(iconColor.opacity(0.12))
+                    .frame(width: 36, height: 36)
+                Image(systemName: iconName)
+                    .font(.system(size: 16))
+                    .foregroundStyle(iconColor)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(permission.title)
+                        .font(.callout.weight(.medium))
+                    if permission.id == "microphone" {
+                        Text("Required")
+                            .font(.system(size: 9, weight: .semibold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(.red.opacity(0.12), in: Capsule())
+                            .foregroundStyle(.red)
+                    }
+                }
+                Text(permission.purpose)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(permission.state.badge)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(permission.state == .granted ? .green : .orange)
+
+                if permission.state != .granted {
+                    Button("Grant…") {
+                        switch permission.id {
+                        case "microphone": model.permissionCenter.requestMicrophone()
+                        case "screen": model.permissionCenter.openScreenRecordingSettings()
+                        case "accessibility": model.permissionCenter.openAccessibilitySettings()
+                        default: break
+                        }
+                    }
+                    .font(.caption)
+                    .buttonStyle(.borderedProminent)
+                    .tint(LurkTheme.accent)
+                    .controlSize(.small)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: LurkTheme.cornerRadius))
+    }
+
+    private var iconName: String {
+        switch permission.id {
+        case "microphone": return "mic.fill"
+        case "screen": return "rectangle.inset.filled.and.person.filled"
+        case "accessibility": return "figure.stand"
+        default: return "lock.fill"
+        }
+    }
+
+    private var iconColor: Color {
+        permission.state == .granted ? .green : LurkTheme.accent
+    }
+}
+
+// MARK: - About Badge
+
+private struct AboutBadge: View {
+    let icon: String
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.caption2)
+            Text(text)
+                .font(.caption)
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color.primary.opacity(0.04), in: Capsule())
     }
 }
 
@@ -567,10 +890,15 @@ struct NamingCandidateRow: View {
     var body: some View {
         HStack {
             Text(candidate.temporaryName)
+                .font(.callout.weight(.medium))
                 .frame(width: 140, alignment: .leading)
             TextField("Enter speaker name", text: $draft)
+                .textFieldStyle(.roundedBorder)
                 .onSubmit { save() }
             Button("Save") { save() }
+                .buttonStyle(.borderedProminent)
+                .tint(LurkTheme.accent)
+                .controlSize(.small)
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
