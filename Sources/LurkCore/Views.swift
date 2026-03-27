@@ -21,31 +21,23 @@ public struct MenuBarView: View {
     public var body: some View {
         VStack(spacing: 0) {
             statusHeader
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 10)
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
 
-            Divider().padding(.horizontal, 12)
+            Divider().padding(.horizontal, 10)
 
             actionsSection
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
 
-            if !model.queueStore.recentJobs.isEmpty {
-                Divider().padding(.horizontal, 12)
-
-                queueSection
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-            }
-
-            Divider().padding(.horizontal, 12)
+            Divider().padding(.horizontal, 10)
 
             bottomBar
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
         }
-        .frame(width: 340)
+        .frame(width: 260)
     }
 
     // MARK: Status Header
@@ -195,21 +187,6 @@ public struct MenuBarView: View {
 
             MenuBarButton(title: "Open Transcripts", icon: "folder", tint: .blue) {
                 model.openOutputDirectory()
-            }
-        }
-    }
-
-    // MARK: Queue
-
-    private var queueSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Recent")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .textCase(.uppercase)
-
-            ForEach(model.queueStore.recentJobs) { job in
-                JobRow(job: job, model: model)
             }
         }
     }
