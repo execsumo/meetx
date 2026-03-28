@@ -119,7 +119,37 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 
 ## Next Steps
 
-### 1. Improve Dictation UX
+### 1. Wire Up Custom Vocabulary Boosting
+
+Custom vocabulary is stored in `AppSettings.customVocabulary` and surfaced in Settings → Transcription, but is currently a no-op — neither the pipeline nor dictation passes it to the ASR model.
+
+FluidAudio supports CTC-based vocabulary boosting for batch `AsrManager` via a dual-encoder approach (TDT for transcription + Parakeet 110M CTC for keyword spotting). It is **batch-mode only** — works for both meeting transcription and dictation (both already use batch `AsrManager`). Not available for streaming ASR.
+
+**API** (from https://docs.fluidinference.com/asr/custom-vocabulary):
+
+```swift
+let ctcModels = try await CtcModels.downloadAndLoad()
+let ctcSpotter = CtcKeywordSpotter(models: ctcModels)
+
+let vocabulary = CustomVocabularyContext(terms: [
+    CustomVocabularyTerm(text: "NVIDIA"),
+    CustomVocabularyTerm(text: "Hagen-Dazs", aliases: ["Haagen-Dazs", "Hagen-Das"]),
+])
+
+let result = try await asrManager.transcribe(audioSamples, customVocabulary: vocabulary)
+```
+
+**Where to wire it:**
+- `Services.swift` `runTranscription()` — already has a stub comment for this
+- `DictationManager.swift` `transcribeAccumulated()` — same `asrManager.transcribe()` call
+
+**Notes:**
+- Memory increases from ~66 MB (TDT only) to ~130 MB (TDT + CTC)
+- `CtcModels` needs to be downloaded separately — add a download card or auto-download alongside Parakeet models
+- Aliases allow spelling variations without polluting the vocabulary list
+- Performance: 63x RTFx (vs 156x TDT-only) — still well above real-time
+
+### 2. Improve Dictation UX
 
 - Consider adding a "Record Shortcut" UI for custom hotkey binding (the button exists but the recording sheet may not be implemented)
 - Tune the polling interval (currently 0.6s) and minimum sample threshold (currently 1s) based on real-world usage
@@ -160,6 +190,7 @@ These approaches were tried and failed, documented here to prevent re-attempting
 
 ## Known Issues
 
+- **Custom vocabulary is a no-op**: `AppSettings.customVocabulary` is stored and displayed in Settings → Transcription but never passed to `AsrManager`. See Next Steps → Wire Up Custom Vocabulary Boosting.
 - **Accessibility permission for dictation**: Must build with `./scripts/bundle.sh --sign "Heard Dev"` (stable self-signed cert) so Accessibility grant persists across rebuilds. If permission stops working after a rebuild, reset with `tccutil reset Accessibility com.execsumo.heard` and re-grant.
 - Running via `swift run` in a terminal causes macOS to attribute microphone permission to the terminal app (e.g., Ghostty) rather than Heard. Use `./scripts/bundle.sh && open build/Heard.app` instead.
 - The `.window` style MenuBarExtra panel has a fixed max height; if many jobs accumulate, the bottom of the panel may clip.

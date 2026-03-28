@@ -207,7 +207,6 @@ public enum ModelKind: String, CaseIterable, Identifiable {
     case batchParakeet
     case batchVad
     case diarization
-    case streamingEou
 
     public var id: String { rawValue }
 
@@ -216,7 +215,6 @@ public enum ModelKind: String, CaseIterable, Identifiable {
         case .batchParakeet: return "Parakeet TDT V2"
         case .batchVad: return "Silero VAD v6"
         case .diarization: return "LS-EEND + WeSpeaker"
-        case .streamingEou: return "Parakeet EOU Streaming"
         }
     }
 }
