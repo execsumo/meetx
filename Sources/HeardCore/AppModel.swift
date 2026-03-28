@@ -89,11 +89,7 @@ public final class AppModel: ObservableObject {
 
         // Activate hotkey if dictation is enabled
         if settingsStore.settings.dictationEnabled {
-            model.hotkeyManager = HotkeyManager(hotkey: settingsStore.settings.dictationHotkey) {
-                [weak model] in
-                model?.toggleDictation()
-            }
-            model.hotkeyManager.activate()
+            model.setupHotkeyManager()
         }
 
         return model
@@ -238,14 +234,7 @@ public final class AppModel: ObservableObject {
         if enabled {
             // Prompt for Accessibility permission (needed for text injection)
             TextInjector.ensureAccessibility()
-
-            if hotkeyManager == nil {
-                hotkeyManager = HotkeyManager(hotkey: settingsStore.settings.dictationHotkey) {
-                    [weak self] in
-                    self?.toggleDictation()
-                }
-            }
-            hotkeyManager.activate()
+            setupHotkeyManager()
         } else {
             hotkeyManager?.deactivate()
             if isDictating {
@@ -254,9 +243,48 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    public func setPushToTalk(_ enabled: Bool) {
+        settingsStore.settings.pushToTalk = enabled
+        objectWillChange.send()
+        // Stop dictation if currently active, so the mode switch is clean
+        if isDictating {
+            toggleDictation()
+        }
+        // Re-wire hotkey callbacks for the new mode
+        if settingsStore.settings.dictationEnabled {
+            hotkeyManager?.deactivate()
+            setupHotkeyManager()
+        }
+    }
+
     public func updateDictationHotkey(_ hotkey: HotkeyCombo) {
         settingsStore.settings.dictationHotkey = hotkey
         hotkeyManager?.updateHotkey(hotkey)
+    }
+
+    private func setupHotkeyManager() {
+        let pushToTalk = settingsStore.settings.pushToTalk
+        hotkeyManager = HotkeyManager(
+            hotkey: settingsStore.settings.dictationHotkey,
+            onPressed: { [weak self] in
+                guard let self else { return }
+                if pushToTalk {
+                    // Push-to-talk: start on press
+                    if !self.isDictating { self.toggleDictation() }
+                } else {
+                    // Toggle mode: flip on press
+                    self.toggleDictation()
+                }
+            },
+            onReleased: { [weak self] in
+                guard let self else { return }
+                if pushToTalk {
+                    // Push-to-talk: stop on release
+                    if self.isDictating { self.toggleDictation() }
+                }
+            }
+        )
+        hotkeyManager.activate()
     }
 
     private func observeDictationPartials() {

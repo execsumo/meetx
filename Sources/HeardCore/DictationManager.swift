@@ -2,25 +2,6 @@ import AVFoundation
 import FluidAudio
 import Foundation
 
-/// Simple file logger for dictation debugging.
-private let dictationLogFile: URL = {
-    let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("heard_dictation.log")
-    try? "".write(to: url, atomically: true, encoding: .utf8)
-    return url
-}()
-
-func dictLog(_ msg: String) {
-    let ts = ISO8601DateFormatter().string(from: Date())
-    let line = "[\(ts)] \(msg)\n"
-    NSLog("Heard: \(msg)")
-    if let data = line.data(using: .utf8),
-       let fh = try? FileHandle(forWritingTo: dictationLogFile) {
-        fh.seekToEndOfFile()
-        fh.write(data)
-        fh.closeFile()
-    }
-}
-
 public enum DictationState: String {
     case idle
     case loading
@@ -28,8 +9,8 @@ public enum DictationState: String {
 }
 
 /// Manages real-time dictation using FluidAudio's batch AsrManager with a polling loop.
-/// This approach (used by FluidVoice) is proven reliable — it re-transcribes accumulated
-/// audio every 0.6s and diffs the output for new words.
+/// Re-transcribes accumulated audio every 0.6s and uses stability-based tracking to
+/// only inject words that have been consistent across consecutive transcription cycles.
 @MainActor
 public final class DictationManager: ObservableObject {
 
@@ -57,8 +38,13 @@ public final class DictationManager: ObservableObject {
     /// Minimum samples before attempting transcription (1s at 16kHz).
     private let minSamples: Int = 16000
 
-    /// Previous transcription result for diffing.
-    private var lastTranscript: String = ""
+    // MARK: - Injection tracking
+
+    /// Words that have been injected into the target app (irreversible).
+    private var committedWords: [String] = []
+
+    /// Previous cycle's transcript split into words, for stability comparison.
+    private var prevCycleWords: [String] = []
 
     public init() {}
 
@@ -66,7 +52,6 @@ public final class DictationManager: ObservableObject {
 
     public func start() async throws {
         guard state == .idle else { return }
-        dictLog("start() called")
 
         unloadTask?.cancel()
         unloadTask = nil
@@ -75,22 +60,20 @@ public final class DictationManager: ObservableObject {
 
         // Load batch ASR models if needed
         if asrModels == nil {
-            dictLog("Loading ASR models...")
             let models = try await AsrModels.loadFromCache(version: .v2)
             asrModels = models
-            dictLog("ASR models loaded")
         }
 
         if asrManager == nil {
             let manager = AsrManager(config: ASRConfig.default)
             try await manager.initialize(models: asrModels!)
             asrManager = manager
-            dictLog("AsrManager initialized")
         }
 
         // Reset state
         audioBuffer.clear()
-        lastTranscript = ""
+        committedWords = []
+        prevCycleWords = []
         partialTranscript = ""
 
         // Start mic capture
@@ -99,12 +82,10 @@ public final class DictationManager: ObservableObject {
 
         // Start streaming transcription loop
         startStreamingLoop()
-        dictLog("Dictation started")
     }
 
     public func stop() async {
         guard state == .listening else { return }
-        dictLog("stop() called")
 
         stopMicCapture()
         streamingTask?.cancel()
@@ -114,7 +95,8 @@ public final class DictationManager: ObservableObject {
         await transcribeAccumulated(isFinal: true)
 
         audioBuffer.clear()
-        lastTranscript = ""
+        committedWords = []
+        prevCycleWords = []
         partialTranscript = ""
         state = .idle
 
@@ -124,7 +106,6 @@ public final class DictationManager: ObservableObject {
             guard let self, !Task.isCancelled else { return }
             self.unloadModels()
         }
-        dictLog("Dictation stopped")
     }
 
     public func toggle() async throws {
@@ -158,52 +139,77 @@ public final class DictationManager: ObservableObject {
         do {
             let result = try await manager.transcribe(samples)
             let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
 
-            if !trimmed.isEmpty {
-                dictLog("Transcript (\(isFinal ? "final" : "partial")): '\(trimmed)'")
+            let words = trimmed.split(separator: " ").map(String.init)
+            partialTranscript = trimmed
 
-                if isFinal {
-                    // On final, inject any new text beyond what was already injected
-                    let newText = diffTranscript(old: lastTranscript, new: trimmed)
-                    if !newText.isEmpty {
-                        onUtterance?(newText)
-                    }
-                } else {
-                    // Show partial in UI, inject new words
-                    let newText = diffTranscript(old: lastTranscript, new: trimmed)
-                    partialTranscript = trimmed
-                    if !newText.isEmpty {
-                        dictLog("New text to inject: '\(newText)'")
-                        onUtterance?(newText)
-                        lastTranscript = trimmed
-                    }
-                }
+            if isFinal {
+                injectFinal(words)
+            } else {
+                injectStable(words)
             }
         } catch {
-            dictLog("Transcription error: \(error)")
+            NSLog("Heard: Dictation transcription error: \(error)")
         }
     }
 
-    /// Diff two transcripts to find new text appended at the end.
-    private func diffTranscript(old: String, new: String) -> String {
-        if old.isEmpty { return new }
-        // If new starts with old, return the suffix
-        if new.hasPrefix(old) {
-            let suffix = String(new.dropFirst(old.count))
-            return suffix.trimmingCharacters(in: .whitespaces)
+    // MARK: - Stability-based injection
+
+    /// Inject words that are stable (same in this cycle and the previous cycle)
+    /// and haven't been injected yet.
+    private func injectStable(_ words: [String]) {
+        // Find how many words match between this cycle and previous cycle
+        var stableCount = 0
+        for (a, b) in zip(words, prevCycleWords) {
+            if normalizedMatch(a, b) { stableCount += 1 } else { break }
         }
-        // If old is a prefix match up to word boundary, find divergence
-        let oldWords = old.split(separator: " ")
-        let newWords = new.split(separator: " ")
-        var commonCount = 0
-        for (a, b) in zip(oldWords, newWords) {
-            if a == b { commonCount += 1 } else { break }
+
+        prevCycleWords = words
+
+        // Verify committed prefix still matches the current transcript
+        guard committedPrefixMatches(words) else { return }
+
+        // Inject any stable words beyond what we've already committed
+        if stableCount > committedWords.count {
+            let newWords = Array(words[committedWords.count..<stableCount])
+            let space = committedWords.isEmpty ? "" : " "
+            onUtterance?(space + newWords.joined(separator: " "))
+            committedWords.append(contentsOf: newWords)
         }
-        if commonCount > 0 && newWords.count > commonCount {
-            return newWords[commonCount...].joined(separator: " ")
+    }
+
+    /// On stop, inject any remaining words beyond what was committed.
+    private func injectFinal(_ words: [String]) {
+        guard committedPrefixMatches(words) else { return }
+
+        if words.count > committedWords.count {
+            let newWords = Array(words[committedWords.count...])
+            let space = committedWords.isEmpty ? "" : " "
+            onUtterance?(space + newWords.joined(separator: " "))
+            committedWords.append(contentsOf: newWords)
         }
-        // Fallback: return entire new transcript
-        return new
+    }
+
+    /// Check that our committed words still match the start of the transcript.
+    /// If the model has rewritten text we already injected, we can't fix it,
+    /// so we stop injecting to avoid duplicates.
+    private func committedPrefixMatches(_ words: [String]) -> Bool {
+        guard !committedWords.isEmpty else { return true }
+        guard words.count >= committedWords.count else { return false }
+        for (i, committed) in committedWords.enumerated() {
+            if !normalizedMatch(committed, words[i]) {
+                return false
+            }
+        }
+        return true
+    }
+
+    /// Compare two words ignoring case and trailing punctuation,
+    /// so "working" matches "working." and "Mom" matches "mom".
+    private func normalizedMatch(_ a: String, _ b: String) -> Bool {
+        a.lowercased().trimmingCharacters(in: .punctuationCharacters)
+            == b.lowercased().trimmingCharacters(in: .punctuationCharacters)
     }
 
     // MARK: - Mic Capture
@@ -212,7 +218,6 @@ public final class DictationManager: ObservableObject {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
         let hwFormat = inputNode.outputFormat(forBus: 0)
-        dictLog("Hardware format: \(hwFormat.sampleRate)Hz, \(hwFormat.channelCount)ch")
 
         let monoFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -251,7 +256,6 @@ public final class DictationManager: ObservableObject {
         engine.prepare()
         try engine.start()
         micEngine = engine
-        dictLog("Engine started, mic tap installed")
     }
 
     private func stopMicCapture() {
@@ -263,7 +267,6 @@ public final class DictationManager: ObservableObject {
     private func unloadModels() {
         asrManager = nil
         asrModels = nil
-        dictLog("Models unloaded")
     }
 }
 

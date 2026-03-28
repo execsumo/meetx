@@ -166,6 +166,7 @@ public struct AppSettings: Codable, Equatable {
     public var developerMode: Bool
     public var dictationEnabled: Bool
     public var dictationHotkey: HotkeyCombo
+    public var pushToTalk: Bool
 
     public static let `default` = AppSettings(
         userName: "",
@@ -175,7 +176,8 @@ public struct AppSettings: Codable, Equatable {
         customVocabulary: [],
         developerMode: false,
         dictationEnabled: false,
-        dictationHotkey: .default
+        dictationHotkey: .default,
+        pushToTalk: false
     )
 
     public init(
@@ -186,7 +188,8 @@ public struct AppSettings: Codable, Equatable {
         customVocabulary: [String],
         developerMode: Bool = false,
         dictationEnabled: Bool = false,
-        dictationHotkey: HotkeyCombo = .default
+        dictationHotkey: HotkeyCombo = .default,
+        pushToTalk: Bool = false
     ) {
         self.userName = userName
         self.launchAtLogin = launchAtLogin
@@ -196,6 +199,7 @@ public struct AppSettings: Codable, Equatable {
         self.developerMode = developerMode
         self.dictationEnabled = dictationEnabled
         self.dictationHotkey = dictationHotkey
+        self.pushToTalk = pushToTalk
     }
 }
 
