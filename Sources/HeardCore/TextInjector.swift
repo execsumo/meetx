@@ -2,7 +2,6 @@ import AppKit
 import Foundation
 
 /// Injects text into the focused text field of any app using CGEvent unicode insertion.
-/// This sends text directly as keyboard events — no clipboard, no Accessibility needed.
 public enum TextInjector {
 
     /// Maximum UTF-16 units per CGEvent (macOS limit).
@@ -16,31 +15,18 @@ public enum TextInjector {
         if !trusted {
             // Prompt the user with the system dialog
             let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
-            let result = AXIsProcessTrustedWithOptions(options)
-            dictLog("TextInjector: AXIsProcessTrusted=\(result) (prompted)")
-            return result
+            return AXIsProcessTrustedWithOptions(options)
         }
         return true
     }
 
     /// Inject text into the currently focused app.
     public static func inject(_ text: String) {
-        dictLog("TextInjector.inject called with: '\(text)'")
-
-        let axTrusted = AXIsProcessTrusted()
-        dictLog("TextInjector: AXIsProcessTrusted=\(axTrusted)")
-
-        if !axTrusted {
-            dictLog("TextInjector: WARNING - Accessibility not granted, text injection will fail")
-        }
+        guard AXIsProcessTrusted() else { return }
 
         // Get the frontmost app's PID
-        guard let frontApp = NSWorkspace.shared.frontmostApplication else {
-            dictLog("TextInjector: No frontmost app")
-            return
-        }
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
         let pid = frontApp.processIdentifier
-        dictLog("TextInjector: targeting PID \(pid) (\(frontApp.localizedName ?? "unknown"))")
 
         // Try CGEvent unicode insertion to specific PID first
         if insertTextBulk(text, targetPID: pid) {
@@ -53,7 +39,6 @@ public enum TextInjector {
         }
 
         // Last resort: clipboard paste
-        dictLog("TextInjector: CGEvent methods failed, trying clipboard paste")
         insertViaClipboard(text)
     }
 
@@ -72,7 +57,6 @@ public enum TextInjector {
             guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
                   let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false)
             else {
-                dictLog("TextInjector: Failed to create CGEvents")
                 return false
             }
 
@@ -87,7 +71,6 @@ public enum TextInjector {
             offset = end
         }
 
-        dictLog("TextInjector: Posted CGEvents to PID \(targetPID)")
         return true
     }
 
@@ -117,7 +100,6 @@ public enum TextInjector {
             offset = end
         }
 
-        dictLog("TextInjector: Posted CGEvents via HID tap")
         return true
     }
 

@@ -4,7 +4,7 @@
 
 The app builds cleanly with `swift build` and runs as a menu bar app on macOS 14.2+. Core infrastructure is complete — meeting detection, dual-track audio capture, on-device transcription (Parakeet TDT V2), VAD (Silero), speaker diarization (LS-EEND + WeSpeaker), and speaker assignment are all functional via the FluidAudio framework. An `.app` bundle is available via `./scripts/bundle.sh`.
 
-**Dictation feature is 90% complete** — speech recognition works perfectly, text injection is the sole remaining blocker (requires Accessibility permission which is invalidated by ad-hoc signing on each rebuild).
+**Dictation feature is fully functional** — speech recognition, text injection via CGEvent unicode insertion, and global hotkey (Ctrl+Shift+D) all working. Requires building with a stable code signing identity (`./scripts/bundle.sh --sign "Heard Dev"`) so Accessibility permission persists across rebuilds.
 
 ## What's Working
 
@@ -41,9 +41,9 @@ The app builds cleanly with `swift build` and runs as a menu bar app on macOS 14
 - Progress tracking per model during download
 - Models auto-download on first meeting if not pre-downloaded
 
-### Dictation (Transcription Working, Injection Blocked)
+### Dictation (Fully Working)
 
-The dictation feature captures mic audio, transcribes in real-time, and attempts to inject text into the focused app. **Speech-to-text works perfectly.** Text injection requires Accessibility permission which is not currently granted.
+The dictation feature captures mic audio, transcribes in real-time, and injects text into the focused app via CGEvent unicode insertion. Requires Accessibility permission granted to a stable-signed build.
 
 #### What's built:
 - **`DictationManager.swift`**: Uses batch `AsrManager` (same Parakeet TDT V2 model as meeting transcription) with a 0.6s polling loop. Accumulates mic audio in a thread-safe buffer, re-transcribes every 0.6s, diffs output to find new words. Standalone `AVAudioEngine` for mic (independent of `RecordingManager`). Model keep-alive of 120s after stop.
@@ -54,9 +54,6 @@ The dictation feature captures mic audio, transcribes in real-time, and attempts
 - **Speech recognition**: Working perfectly. Tested transcriptions: "Alright, did Claude figure it out this time? Beep bop boop.", "Is this working now?", etc.
 - **Text diffing**: Working. Only injects new words, not the full retranscription.
 - **UI**: Dictation settings tab with enable toggle, hotkey display, model download card, Accessibility warning, live status. Menu bar shows dictation state.
-
-#### What's blocked:
-- **Text injection**: `AXIsProcessTrusted()` returns `false`. ALL macOS text injection methods (CGEvent `postToPid`, CGEvent HID tap, clipboard + Cmd+V, AppleScript System Events) require Accessibility permission. Ad-hoc code signing creates a new identity each rebuild, invalidating the previous Accessibility grant.
 
 ### UI
 - Menu bar dropdown with status dot (pulsing red during recording), recording timer, job list with dismiss buttons
@@ -122,58 +119,16 @@ The dictation feature captures mic audio, transcribes in real-time, and attempts
 
 ## Next Steps
 
-### 1. Fix Text Injection (Accessibility Permission)
+### 1. Improve Dictation UX
 
-**The problem**: `AXIsProcessTrusted()` returns `false` because ad-hoc code signing creates a new identity each rebuild, and macOS invalidates the Accessibility grant for the old identity.
-
-**Solutions (pick one)**:
-- **Sign with a stable Developer ID certificate** (`./scripts/bundle.sh --sign "Developer ID Application: ..."`) — this keeps the same code signing identity across rebuilds, so Accessibility permission persists. This is the correct production fix.
-- **Self-signed certificate** — create a local certificate in Keychain Access, sign with it consistently. Cheaper than a Developer ID but works the same way for Accessibility. Instructions below.
-- **Install to /Applications and manually re-grant** — after each rebuild, remove the old Heard entry in System Settings > Privacy & Security > Accessibility, then re-add the new build. Tedious but works for development.
-
-**Self-signed certificate setup (one-time)**:
-```bash
-# 1. Open Keychain Access > Certificate Assistant > Create a Certificate
-#    - Name: "Heard Dev"
-#    - Identity Type: Self Signed Root
-#    - Certificate Type: Code Signing
-#    - Click Create
-
-# 2. Verify it shows up:
-security find-identity -v -p codesigning
-# Look for "Heard Dev" in the output
-
-# 3. Build with stable signing:
-./scripts/bundle.sh --sign "Heard Dev"
-
-# 4. Grant Accessibility once:
-#    Open build/Heard.app → enable dictation → grant Accessibility when prompted
-#    This grant persists across rebuilds as long as you use the same cert
-```
-
-**What NOT to try** (already attempted and ruled out):
-- AppleScript `System Events` keystroke: requires Automation permission, also blocked for ad-hoc apps (error -1743)
-- `CGEvent.post(tap: .cgSessionEventTap)`: still requires Accessibility
-- `CGEvent.post(tap: .cghidEventTap)`: still requires Accessibility
-- `NSEvent` global monitors: observe-only, can't inject
-- There is no macOS text injection method that works without Accessibility permission
-
-### 2. Clean Up Debug Logging
-
-Remove the `dictLog()` file logger and `~/heard_dictation.log` once text injection is verified working. The `dictLog` function is in `DictationManager.swift` and referenced in `TextInjector.swift`.
-
-### 3. Improve Dictation UX
-
-- Remove the streaming EOU model card from the Dictation settings tab (no longer used — we use the batch Parakeet model)
-- Add a visual indicator in the menu bar when dictation is active (partial transcript preview)
 - Consider adding a "Record Shortcut" UI for custom hotkey binding (the button exists but the recording sheet may not be implemented)
 - Tune the polling interval (currently 0.6s) and minimum sample threshold (currently 1s) based on real-world usage
 
-### 4. FluidAudio Mel Spectrogram Bug
+### 2. FluidAudio Mel Spectrogram Bug
 
 A patch was applied to `.build/checkouts/FluidAudio/Sources/FluidAudio/Shared/AudioMelSpectrogram.swift` line 193: changed `let numFrames = audioCount / hopLength` to `let numFrames = 1 + audioCount / hopLength`. This fixes a frame count off-by-one for center-padded mode. This patch will be lost on `swift package clean` or `swift package resolve`. If the StreamingEouAsrManager is revisited in the future, this bug needs to be reported/fixed upstream in FluidAudio.
 
-### 5. Other
+### 3. Other
 
 - **App icon** — Create and include an app icon for the bundle
 - **CI/CD pipeline** — GitHub Actions workflow for build, sign, notarize, publish
@@ -205,9 +160,8 @@ These approaches were tried and failed, documented here to prevent re-attempting
 
 ## Known Issues
 
-- **Accessibility permission for dictation text injection**: `AXIsProcessTrusted()` returns `false` for ad-hoc signed builds because macOS invalidates the grant when the code signing identity changes. Fix: sign with a stable certificate.
+- **Accessibility permission for dictation**: Must build with `./scripts/bundle.sh --sign "Heard Dev"` (stable self-signed cert) so Accessibility grant persists across rebuilds. If permission stops working after a rebuild, reset with `tccutil reset Accessibility com.execsumo.heard` and re-grant.
 - Running via `swift run` in a terminal causes macOS to attribute microphone permission to the terminal app (e.g., Ghostty) rather than Heard. Use `./scripts/bundle.sh && open build/Heard.app` instead.
 - The `.window` style MenuBarExtra panel has a fixed max height; if many jobs accumulate, the bottom of the panel may clip.
 - Simulated meetings produce very short recordings that fail in the pipeline (expected — they exist for UI testing, not audio testing).
 - The FluidAudio `computeFlat` mel spectrogram has an off-by-one bug affecting streaming ASR. A local patch exists in `.build/checkouts/` but will be lost on package resolution.
-- Debug logging (`~/heard_dictation.log`) is still active — remove before shipping.

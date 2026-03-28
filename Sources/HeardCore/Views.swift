@@ -495,8 +495,22 @@ public struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         SettingsSectionHeader(title: "Hotkey", icon: "command")
 
+                        Toggle(isOn: Binding(
+                            get: { model.settingsStore.settings.pushToTalk },
+                            set: { model.setPushToTalk($0) }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Push to Talk")
+                                    .font(.callout.weight(.medium))
+                                Text("Hold the hotkey to dictate, release to stop.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .disabled(!model.settingsStore.settings.dictationEnabled)
+
                         HStack {
-                            Text("Toggle dictation:")
+                            Text(model.settingsStore.settings.pushToTalk ? "Hold to dictate:" : "Toggle dictation:")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
 
@@ -529,21 +543,6 @@ public struct SettingsView: View {
                                 }
                             }
                         }
-                    }
-                }
-
-                // Streaming Model
-                SectionCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        SettingsSectionHeader(title: "Streaming Model", icon: "cpu")
-
-                        if let status = model.modelCatalog.statuses.first(where: { $0.modelKind == .streamingEou }) {
-                            ModelStatusCard(item: status, downloadManager: model.downloadManager)
-                        }
-
-                        Text("The streaming model enables real-time transcription for dictation. Download it before first use to avoid delays.")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
                     }
                 }
 

@@ -73,8 +73,14 @@ private func carbonHotkeyHandler(
     event: EventRef?,
     userData: UnsafeMutableRawPointer?
 ) -> OSStatus {
+    guard let event else { return OSStatus(eventNotHandledErr) }
+    let eventKind = Int(GetEventKind(event))
     DispatchQueue.main.async {
-        hotkeyManagerInstance?.handleHotkey()
+        if eventKind == kEventHotKeyPressed {
+            hotkeyManagerInstance?.handleHotkeyPressed()
+        } else if eventKind == kEventHotKeyReleased {
+            hotkeyManagerInstance?.handleHotkeyReleased()
+        }
     }
     return noErr
 }
@@ -88,20 +94,23 @@ public final class HotkeyManager {
     private var hotkeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
     private var hotkey: HotkeyCombo
-    private var onToggle: (() -> Void)?
+    private var onPressed: (() -> Void)?
+    private var onReleased: (() -> Void)?
 
     private static let hotkeyID = EventHotKeyID(
         signature: OSType(0x48524430),  // "HRD0"
         id: 1
     )
 
-    public init(hotkey: HotkeyCombo = .default, onToggle: (() -> Void)? = nil) {
+    public init(hotkey: HotkeyCombo = .default, onPressed: (() -> Void)? = nil, onReleased: (() -> Void)? = nil) {
         self.hotkey = hotkey
-        self.onToggle = onToggle
+        self.onPressed = onPressed
+        self.onReleased = onReleased
     }
 
-    public func setCallback(_ callback: @escaping () -> Void) {
-        self.onToggle = callback
+    public func setCallbacks(onPressed: @escaping () -> Void, onReleased: (() -> Void)? = nil) {
+        self.onPressed = onPressed
+        self.onReleased = onReleased
     }
 
     public func updateHotkey(_ newHotkey: HotkeyCombo) {
@@ -117,17 +126,23 @@ public final class HotkeyManager {
         // Store singleton reference for C callback
         hotkeyManagerInstance = self
 
-        // Install Carbon event handler for hot key events
-        var eventType = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: UInt32(kEventHotKeyPressed)
-        )
+        // Install Carbon event handler for both pressed and released events
+        var eventTypes = [
+            EventTypeSpec(
+                eventClass: OSType(kEventClassKeyboard),
+                eventKind: UInt32(kEventHotKeyPressed)
+            ),
+            EventTypeSpec(
+                eventClass: OSType(kEventClassKeyboard),
+                eventKind: UInt32(kEventHotKeyReleased)
+            ),
+        ]
 
         let status = InstallEventHandler(
             GetApplicationEventTarget(),
             carbonHotkeyHandler,
-            1,
-            &eventType,
+            2,
+            &eventTypes,
             nil,
             &eventHandlerRef
         )
@@ -151,8 +166,6 @@ public final class HotkeyManager {
         if regStatus != noErr {
             NSLog("Heard: Failed to register hotkey: \(regStatus)")
             deactivate()
-        } else {
-            NSLog("Heard: Hotkey registered: \(hotkey.displayString)")
         }
     }
 
@@ -170,8 +183,12 @@ public final class HotkeyManager {
         }
     }
 
-    func handleHotkey() {
-        onToggle?()
+    func handleHotkeyPressed() {
+        onPressed?()
+    }
+
+    func handleHotkeyReleased() {
+        onReleased?()
     }
 
     deinit {
