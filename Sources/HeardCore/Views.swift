@@ -552,6 +552,44 @@ public struct SettingsView: View {
                     }
                 }
 
+                // Model Keep-Alive
+                SectionCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        SettingsSectionHeader(title: "Model Keep-Alive", icon: "hourglass")
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Keep dictation model loaded for \(keepAliveLabel(model.settingsStore.settings.dictationKeepAlive)) after stopping")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+
+                            Slider(
+                                value: Binding(
+                                    get: { model.settingsStore.settings.dictationKeepAlive },
+                                    set: { model.settingsStore.settings.dictationKeepAlive = $0 }
+                                ),
+                                in: 0...600,
+                                step: 30
+                            )
+
+                            HStack {
+                                Text("Unload immediately")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                Spacer()
+                                Text("10 minutes")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+
+                        Button("Unload Dictation Models Now") {
+                            model.dictationManager.unloadModels()
+                        }
+                        .font(.caption)
+                        .disabled(model.isDictating)
+                    }
+                }
+
                 // Status
                 if model.isDictating {
                     SectionCard {
@@ -604,6 +642,15 @@ public struct SettingsView: View {
         isRecordingHotkey = false
     }
 
+    private func keepAliveLabel(_ seconds: TimeInterval) -> String {
+        if seconds <= 0 { return "0s" }
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        if mins > 0 && secs > 0 { return "\(mins)m \(secs)s" }
+        if mins > 0 { return "\(mins)m" }
+        return "\(secs)s"
+    }
+
     // MARK: Models Section
 
     private var modelsSection: some View {
@@ -634,6 +681,64 @@ public struct SettingsView: View {
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
+                    }
+                }
+
+                // Pipeline Model Keep-Alive
+                SectionCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        SettingsSectionHeader(title: "Meeting Transcription Keep-Alive", icon: "hourglass")
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Keep transcription models loaded for \(keepAliveLabel(model.settingsStore.settings.pipelineKeepAlive)) after processing")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+
+                            Slider(
+                                value: Binding(
+                                    get: { model.settingsStore.settings.pipelineKeepAlive },
+                                    set: { model.settingsStore.settings.pipelineKeepAlive = $0 }
+                                ),
+                                in: 0...600,
+                                step: 30
+                            )
+
+                            HStack {
+                                Text("Unload immediately")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                Spacer()
+                                Text("10 minutes")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+
+                        Text("Keeping models loaded speeds up back-to-back meetings but uses more RAM (~800 MB).")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+
+                // Force Unload
+                SectionCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        SettingsSectionHeader(title: "Memory", icon: "memorychip")
+
+                        Text("Force unload all cached models to free RAM/VRAM immediately.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+
+                        Button(role: .destructive) {
+                            model.pipelineProcessor.unloadPipelineModels()
+                            model.dictationManager.unloadModels()
+                        } label: {
+                            HStack {
+                                Image(systemName: "xmark.circle.fill")
+                                Text("Unload All Models")
+                            }
+                        }
+                        .disabled(model.pipelineProcessor.isProcessing || model.isDictating)
                     }
                 }
 

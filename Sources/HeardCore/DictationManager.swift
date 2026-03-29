@@ -9,7 +9,7 @@ public enum DictationState: String {
 }
 
 /// Manages real-time dictation using FluidAudio's batch AsrManager with a polling loop.
-/// Re-transcribes accumulated audio every 0.6s and uses stability-based tracking to
+/// Re-transcribes accumulated audio every 0.3s and uses stability-based tracking to
 /// only inject words that have been consistent across consecutive transcription cycles.
 @MainActor
 public final class DictationManager: ObservableObject {
@@ -35,14 +35,14 @@ public final class DictationManager: ObservableObject {
     /// Vocabulary that was last configured on the ASR manager, to detect changes.
     private var configuredVocabulary: [String] = []
 
-    /// How long to keep the model loaded after dictation stops (seconds).
-    private let modelKeepAliveSeconds: TimeInterval = 120
+    /// How long to keep the model loaded after dictation stops (seconds). Set from settings before calling stop().
+    public var modelKeepAliveSeconds: TimeInterval = 120
 
     /// How often to re-transcribe accumulated audio (seconds).
-    private let chunkInterval: TimeInterval = 0.6
+    private let chunkInterval: TimeInterval = 0.3
 
-    /// Minimum samples before attempting transcription (1s at 16kHz).
-    private let minSamples: Int = 16000
+    /// Minimum samples before attempting transcription (0.5s at 16kHz).
+    private let minSamples: Int = 8000
 
     // MARK: - Injection tracking
 
@@ -302,9 +302,14 @@ public final class DictationManager: ObservableObject {
         micEngine = nil
     }
 
-    private func unloadModels() {
+    /// Unload ASR models from memory. Called automatically after keep-alive expires, or manually via force unload.
+    public func unloadModels() {
+        unloadTask?.cancel()
+        unloadTask = nil
         asrManager = nil
         asrModels = nil
+        configuredVocabulary = []
+        NSLog("Heard: Dictation models unloaded")
     }
 }
 
