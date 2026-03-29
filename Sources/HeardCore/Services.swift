@@ -701,6 +701,11 @@ public final class PipelineProcessor: ObservableObject {
     private var appDiarization: DiarizationResult?
     private var micDiarization: DiarizationResult?
 
+    /// Cached models for keep-alive between jobs.
+    private var cachedAsrModels: AsrModels?
+    private var cachedAsrManager: AsrManager?
+    private var modelUnloadTask: Task<Void, Never>?
+
     private static let retryDelays: [TimeInterval] = [5, 30, 300]
     private static let maxRetries = 3
 
@@ -771,6 +776,32 @@ public final class PipelineProcessor: ObservableObject {
         micTranscription = nil
         appDiarization = nil
         micDiarization = nil
+
+        // Schedule model unload based on keep-alive setting
+        let keepAlive = settingsStore.settings.pipelineKeepAlive
+        if keepAlive > 0 {
+            scheduleModelUnload(after: keepAlive)
+        } else {
+            unloadPipelineModels()
+        }
+    }
+
+    private func scheduleModelUnload(after seconds: TimeInterval) {
+        modelUnloadTask?.cancel()
+        modelUnloadTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard let self, !Task.isCancelled else { return }
+            self.unloadPipelineModels()
+        }
+    }
+
+    /// Unload cached pipeline models from memory.
+    public func unloadPipelineModels() {
+        modelUnloadTask?.cancel()
+        modelUnloadTask = nil
+        cachedAsrModels = nil
+        cachedAsrManager = nil
+        NSLog("Heard: Pipeline models unloaded")
     }
 
     // MARK: - Retry Logic
@@ -924,10 +955,22 @@ public final class PipelineProcessor: ObservableObject {
     // MARK: - Stage 2: Transcription (Parakeet TDT V2)
 
     private func runTranscription(_ job: PipelineJob) async throws {
-        // Load Parakeet model from FluidAudio's cache (auto-downloads on first use)
-        let models = try await AsrModels.loadFromCache(version: .v2)
-        let asrManager = AsrManager()
-        try await asrManager.initialize(models: models)
+        // Cancel any pending unload — we're using the models now
+        modelUnloadTask?.cancel()
+        modelUnloadTask = nil
+
+        // Reuse cached models if available, otherwise load fresh
+        let asrManager: AsrManager
+        if let cached = cachedAsrManager {
+            asrManager = cached
+        } else {
+            let models = try await AsrModels.loadFromCache(version: .v2)
+            let manager = AsrManager()
+            try await manager.initialize(models: models)
+            asrManager = manager
+            cachedAsrModels = models
+            cachedAsrManager = manager
+        }
 
         // Configure custom vocabulary boosting if terms are set and CTC models available
         let vocab = settingsStore.settings.customVocabulary
@@ -965,7 +1008,7 @@ public final class PipelineProcessor: ObservableObject {
             micTranscription = try await asrManager.transcribe(track.samples, source: .microphone)
         }
 
-        // Models are released when asrManager goes out of scope
+        // Models stay cached for keep-alive; unloaded by clearJobState() or forceUnload()
     }
 
     // MARK: - Stage 3: Diarization (LS-EEND + WeSpeaker)

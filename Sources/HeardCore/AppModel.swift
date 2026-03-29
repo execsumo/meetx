@@ -212,6 +212,7 @@ public final class AppModel: ObservableObject {
     public func toggleDictation() {
         Task {
             if isDictating {
+                dictationManager.modelKeepAliveSeconds = settingsStore.settings.dictationKeepAlive
                 await dictationManager.stop()
                 isDictating = false
                 partialTranscript = ""
@@ -219,6 +220,7 @@ public final class AppModel: ObservableObject {
             } else {
                 do {
                     dictationManager.customVocabulary = settingsStore.settings.customVocabulary
+                    dictationManager.modelKeepAliveSeconds = settingsStore.settings.dictationKeepAlive
                     try await dictationManager.start()
                     isDictating = true
                     dictationError = nil

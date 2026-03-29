@@ -177,6 +177,10 @@ public struct AppSettings: Codable, Equatable {
     public var dictationEnabled: Bool
     public var dictationHotkey: HotkeyCombo
     public var pushToTalk: Bool
+    /// How long to keep dictation models loaded after stopping (seconds). 0 = unload immediately.
+    public var dictationKeepAlive: TimeInterval
+    /// How long to keep transcription/diarization models loaded after pipeline processing (seconds). 0 = unload immediately.
+    public var pipelineKeepAlive: TimeInterval
 
     public static let `default` = AppSettings(
         userName: "",
@@ -187,7 +191,9 @@ public struct AppSettings: Codable, Equatable {
         developerMode: false,
         dictationEnabled: false,
         dictationHotkey: .default,
-        pushToTalk: false
+        pushToTalk: false,
+        dictationKeepAlive: 120,
+        pipelineKeepAlive: 0
     )
 
     public init(
@@ -199,7 +205,9 @@ public struct AppSettings: Codable, Equatable {
         developerMode: Bool = false,
         dictationEnabled: Bool = false,
         dictationHotkey: HotkeyCombo = .default,
-        pushToTalk: Bool = false
+        pushToTalk: Bool = false,
+        dictationKeepAlive: TimeInterval = 120,
+        pipelineKeepAlive: TimeInterval = 0
     ) {
         self.userName = userName
         self.launchAtLogin = launchAtLogin
@@ -210,6 +218,8 @@ public struct AppSettings: Codable, Equatable {
         self.dictationEnabled = dictationEnabled
         self.dictationHotkey = dictationHotkey
         self.pushToTalk = pushToTalk
+        self.dictationKeepAlive = dictationKeepAlive
+        self.pipelineKeepAlive = pipelineKeepAlive
     }
 }
 
