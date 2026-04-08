@@ -252,6 +252,7 @@ public final class RecordingManager: ObservableObject {
     private var micAudioFile: AVAudioFile?
     private var appAudioFile: AVAudioFile?
     private var tapObjectID: AudioObjectID = 0
+    private var aggregateDeviceID: AudioObjectID = 0
     private var maxDurationTask: Task<Void, Never>?
     private var micStartTime: Date?
     private var appStartTime: Date?
@@ -398,21 +399,119 @@ public final class RecordingManager: ObservableObject {
     // MARK: - App Audio Recording (CATapDescription + Process Tap)
 
     private func setupAppAudioRecording(pid: pid_t, to url: URL) throws {
-        let tapDesc = CATapDescription(stereoMixdownOfProcesses: [AudioObjectID(pid)])
-        tapDesc.name = "Heard"
+        // Translate the Teams BSD pid into a CoreAudio AudioObjectID.
+        var translatedPID = pid
+        var processObjectID: AudioObjectID = 0
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyTranslatePIDToProcessObject,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let translateErr = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &addr,
+            UInt32(MemoryLayout<pid_t>.size),
+            &translatedPID,
+            &size,
+            &processObjectID
+        )
+        guard translateErr == noErr, processObjectID != 0 else {
+            throw RecordingError.processTapFailed(translateErr)
+        }
 
-        var objectID: AudioObjectID = 0
-        let status = AudioHardwareCreateProcessTap(tapDesc, &objectID)
+        let tapDesc = CATapDescription(stereoMixdownOfProcesses: [processObjectID])
+        tapDesc.name = "Heard Tap"
+        tapDesc.isPrivate = true
+        tapDesc.muteBehavior = .unmuted
+
+        var tapID: AudioObjectID = 0
+        let status = AudioHardwareCreateProcessTap(tapDesc, &tapID)
         guard status == noErr else {
             throw RecordingError.processTapFailed(status)
         }
-        tapObjectID = objectID
+        tapObjectID = tapID
+
+        // Fetch the tap's UID — needed to reference it from the aggregate device.
+        var tapUIDCF: CFString = "" as CFString
+        var uidSize = UInt32(MemoryLayout<CFString>.size)
+        var tapUIDAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioTapPropertyUID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let uidErr = withUnsafeMutablePointer(to: &tapUIDCF) { ptr -> OSStatus in
+            AudioObjectGetPropertyData(tapID, &tapUIDAddr, 0, nil, &uidSize, ptr)
+        }
+        guard uidErr == noErr else {
+            AudioHardwareDestroyProcessTap(tapID)
+            tapObjectID = 0
+            throw RecordingError.deviceSetupFailed(uidErr)
+        }
+        let tapUID = tapUIDCF as String
+
+        // Find the default system output device to drive the aggregate clock.
+        var outputDeviceID: AudioObjectID = 0
+        var outSize = UInt32(MemoryLayout<AudioObjectID>.size)
+        var outAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        _ = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &outAddr,
+            0,
+            nil,
+            &outSize,
+            &outputDeviceID
+        )
+        var outputUIDCF: CFString = "" as CFString
+        var outUIDSize = UInt32(MemoryLayout<CFString>.size)
+        var outUIDAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceUID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        _ = withUnsafeMutablePointer(to: &outputUIDCF) { ptr -> OSStatus in
+            AudioObjectGetPropertyData(outputDeviceID, &outUIDAddr, 0, nil, &outUIDSize, ptr)
+        }
+        let outputUID = outputUIDCF as String
+
+        // Build a private aggregate device containing the tap.
+        let aggregateUID = "com.execsumo.heard.tap.\(UUID().uuidString)"
+        let aggregateDict: [String: Any] = [
+            kAudioAggregateDeviceNameKey as String: "Heard Aggregate",
+            kAudioAggregateDeviceUIDKey as String: aggregateUID,
+            kAudioAggregateDeviceMainSubDeviceKey as String: outputUID,
+            kAudioAggregateDeviceIsPrivateKey as String: true,
+            kAudioAggregateDeviceIsStackedKey as String: false,
+            kAudioAggregateDeviceTapAutoStartKey as String: true,
+            kAudioAggregateDeviceSubDeviceListKey as String: [
+                [kAudioSubDeviceUIDKey as String: outputUID]
+            ],
+            kAudioAggregateDeviceTapListKey as String: [
+                [
+                    kAudioSubTapDriftCompensationKey as String: true,
+                    kAudioSubTapUIDKey as String: tapUID,
+                ]
+            ],
+        ]
+
+        var aggregateID: AudioObjectID = 0
+        let aggErr = AudioHardwareCreateAggregateDevice(aggregateDict as CFDictionary, &aggregateID)
+        guard aggErr == noErr else {
+            AudioHardwareDestroyProcessTap(tapID)
+            tapObjectID = 0
+            throw RecordingError.deviceSetupFailed(aggErr)
+        }
+        aggregateDeviceID = aggregateID
 
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
 
-        // Point the engine's input to the process tap device
-        var deviceID = objectID
+        // Point the engine's input at the aggregate device.
+        var deviceID = aggregateID
         let audioUnit = inputNode.audioUnit!
         let setErr = AudioUnitSetProperty(
             audioUnit,
@@ -423,7 +522,9 @@ public final class RecordingManager: ObservableObject {
             UInt32(MemoryLayout<AudioObjectID>.size)
         )
         guard setErr == noErr else {
-            AudioHardwareDestroyProcessTap(objectID)
+            AudioHardwareDestroyAggregateDevice(aggregateID)
+            aggregateDeviceID = 0
+            AudioHardwareDestroyProcessTap(tapID)
             tapObjectID = 0
             throw RecordingError.deviceSetupFailed(setErr)
         }
@@ -456,6 +557,10 @@ public final class RecordingManager: ObservableObject {
         appEngine = nil
         appAudioFile = nil
 
+        if aggregateDeviceID != 0 {
+            AudioHardwareDestroyAggregateDevice(aggregateDeviceID)
+            aggregateDeviceID = 0
+        }
         if tapObjectID != 0 {
             AudioHardwareDestroyProcessTap(tapObjectID)
             tapObjectID = 0
