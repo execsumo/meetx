@@ -1071,7 +1071,7 @@ private struct PermissionCard: View {
                 HStack(spacing: 6) {
                     Text(permission.title)
                         .font(.callout.weight(.medium))
-                    if permission.id == "microphone" {
+                    if permission.id == "microphone" || permission.id == "screenCapture" {
                         Text("Required")
                             .font(.system(size: 9, weight: .semibold))
                             .padding(.horizontal, 5)
@@ -1096,6 +1096,7 @@ private struct PermissionCard: View {
                     Button("Grant…") {
                         switch permission.id {
                         case "microphone": model.permissionCenter.requestMicrophone()
+                        case "screenCapture": model.permissionCenter.openScreenCaptureSettings()
                         case "accessibility": model.permissionCenter.openAccessibilitySettings()
                         default: break
                         }
@@ -1114,6 +1115,7 @@ private struct PermissionCard: View {
     private var iconName: String {
         switch permission.id {
         case "microphone": return "mic.fill"
+        case "screenCapture": return "rectangle.dashed.badge.record"
         case "accessibility": return "figure.stand"
         default: return "lock.fill"
         }

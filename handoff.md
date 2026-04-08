@@ -72,7 +72,7 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 - Custom vocabulary management (add/remove terms, 3-char min, 50-term cap, immediate UI update on delete) — terms applied to both transcription and dictation via CTC boosting
 - Speaker table with inline rename, merge, delete (context menu), search, and sort (Name / Last Seen / Meeting Count)
 - Model download status with progress bars and per-card download buttons
-- Permission status with grant buttons and System Settings deep-links (Microphone + Accessibility only — no Screen Recording required)
+- Permission status with grant buttons and System Settings deep-links (Microphone + Screen Recording + Accessibility)
 - Launch at login via `SMAppService`
 - Quit button in menu bar dropdown
 

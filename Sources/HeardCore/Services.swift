@@ -530,11 +530,18 @@ public final class RecordingManager: ObservableObject {
             throw RecordingError.deviceSetupFailed(setErr)
         }
 
+        // Prepare the engine NOW so that the AUHAL renegotiates its format against
+        // the aggregate device. Querying outputFormat(forBus:) before prepare() would
+        // return the default mic format, not the tap's format, causing a mismatch.
+        engine.prepare()
+
         let hwFormat = inputNode.outputFormat(forBus: 0)
+        NSLog("Heard: Tap format after prepare — sr=%.0f ch=%u", hwFormat.sampleRate, hwFormat.channelCount)
+
         let fileSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVSampleRateKey: hwFormat.sampleRate,
-            AVNumberOfChannelsKey: hwFormat.channelCount,
+            AVNumberOfChannelsKey: max(hwFormat.channelCount, 1),
             AVLinearPCMBitDepthKey: 16,
             AVLinearPCMIsFloatKey: false,
             AVLinearPCMIsBigEndianKey: false,
@@ -546,7 +553,6 @@ public final class RecordingManager: ObservableObject {
             try? file.write(from: buffer)
         }
 
-        engine.prepare()
         try engine.start()
         appEngine = engine
         appStartTime = Date()
@@ -655,6 +661,12 @@ public final class PermissionCenter: ObservableObject {
                 state: microphoneState()
             ),
             PermissionStatus(
+                id: "screenCapture",
+                title: "Screen Recording",
+                purpose: "Tap Teams audio to record the other participants' voices. Required for dual-track recording.",
+                state: screenCaptureState()
+            ),
+            PermissionStatus(
                 id: "accessibility",
                 title: "Accessibility",
                 purpose: "Read Teams window titles and roster for meeting names and speaker naming. Required for dictation text injection.",
@@ -667,6 +679,10 @@ public final class PermissionCenter: ObservableObject {
         AXIsProcessTrusted()
     }
 
+    public var isScreenCaptureGranted: Bool {
+        CGPreflightScreenCaptureAccess()
+    }
+
     public func requestMicrophone() {
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
@@ -677,12 +693,26 @@ public final class PermissionCenter: ObservableObject {
         openSystemSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
     }
 
+    public func openScreenCaptureSettings() {
+        // CGRequestScreenCaptureAccess() triggers the system prompt on macOS 14;
+        // on macOS 15+ it redirects to System Settings. Use it unconditionally.
+        CGRequestScreenCaptureAccess()
+        // Re-check after a brief delay — the grant applies asynchronously.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            Task { @MainActor in self?.refresh() }
+        }
+    }
+
     private func microphoneState() -> PermissionState {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized: return .granted
         case .notDetermined: return .recommended
         default: return .unknown
         }
+    }
+
+    private func screenCaptureState() -> PermissionState {
+        CGPreflightScreenCaptureAccess() ? .granted : .recommended
     }
 
     private func accessibilityState() -> PermissionState {
