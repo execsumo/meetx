@@ -31,7 +31,7 @@ No cloud, no LLM, no external APIs — everything runs on-device.
 
 ## Requirements
 
-- macOS 14.2+
+- macOS 15.0+
 - Apple Silicon (for CoreML/ANE inference)
 - [FluidAudio](https://github.com/AugmentedAudioKit/FluidAudio) framework (resolved automatically via SPM)
 
