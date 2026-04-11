@@ -65,14 +65,16 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 - **UI**: Dictation settings tab with enable toggle, hotkey display, model download card, Accessibility warning, live status. Menu bar shows dictation state.
 
 ### UI
-- Menu bar dropdown with status dot (pulsing red during recording), recording timer, job list with dismiss buttons
-- Settings window (opened via `@Environment(\.openWindow)`) with 6 tabs: General, Transcription, Dictation, Speakers, Permissions (Microphone + Accessibility), About
-- Keyboard input works in Settings (activation policy switching)
+- Menu bar dropdown with status card (pulsing red while recording/dictating, orange while processing, green/yellow when watching/paused), recording timer, and quick actions
+- Menu bar icons are SF Symbols with symbol effects (`recordingtape`, `record.circle` + `.breathe`, `waveform` + `.variableColor`, `exclamationmark.circle.fill`, `person.crop.circle.badge.exclamationmark`)
+- Settings window (opened via `@Environment(\.openWindow)`) with 5 tabs: **General** (launch at login, auto-watch, developer mode, custom vocabulary, output folder, permissions), **Dictation** (enable, push-to-talk, hotkey recorder, model keep-alive, live status), **Models** (download status, pipeline keep-alive, force-unload), **Speakers** (your name, inline rename, merge, delete, search/sort), **About**
+- Standalone "Name Speakers" window scene (id `speaker-naming`) with per-candidate audio playback, roster suggestions, and 120 s auto-dismiss
+- Keyboard input works in Settings (activation policy switches between `.accessory` and `.regular`)
 - Output folder picker via `NSOpenPanel`
-- Custom vocabulary management (add/remove terms, 3-char min, 50-term cap, immediate UI update on delete) — terms applied to both transcription and dictation via CTC boosting
+- Custom vocabulary management lives in the General tab (add/remove terms, 3-char min, 50-term cap) — terms applied to both transcription and dictation via CTC boosting
 - Speaker table with inline rename, merge, delete (context menu), search, and sort (Name / Last Seen / Meeting Count)
-- Model download status with progress bars and per-card download buttons
-- Permission status with grant buttons and System Settings deep-links (Microphone + Screen Recording + Accessibility)
+- Model download status with progress bars and per-card download buttons, plus a "Download All Models" shortcut
+- Permission status with grant buttons and System Settings deep-links (Microphone + Screen Recording + Accessibility), surfaced inside the General tab
 - Launch at login via `SMAppService`
 - Quit button in menu bar dropdown
 
@@ -143,29 +145,22 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 
 ## Next Steps
 
-### 1. Improve Dictation UX
+See [`ROADMAP.md`](./ROADMAP.md) for the full list of planned improvements, organized by near-term polish, mid-term features, long-term bets, and technical debt. The highlights:
 
-- Consider adding a "Record Shortcut" UI for custom hotkey binding (the button exists but the recording sheet may not be implemented)
-- Tune the polling interval (currently 0.6s) and minimum sample threshold (currently 1s) based on real-world usage
+### 1. Distribution
+- App icon (currently an SF Symbol placeholder in the About tab)
+- CI pipeline — GitHub Actions: build, test, bundle, notarize, publish
+- DMG packaging for GitHub Releases
+- Homebrew Cask formula
 
 ### 2. FluidAudio Mel Spectrogram Bug
+A patch was applied to `.build/checkouts/FluidAudio/Sources/FluidAudio/Shared/AudioMelSpectrogram.swift` line 193: changed `let numFrames = audioCount / hopLength` to `let numFrames = 1 + audioCount / hopLength`. This fixes a frame count off-by-one for center-padded mode. This patch will be lost on `swift package clean` or `swift package resolve`. If the `StreamingEouAsrManager` path is ever revisited, this needs to be reported/fixed upstream in FluidAudio.
 
-A patch was applied to `.build/checkouts/FluidAudio/Sources/FluidAudio/Shared/AudioMelSpectrogram.swift` line 193: changed `let numFrames = audioCount / hopLength` to `let numFrames = 1 + audioCount / hopLength`. This fixes a frame count off-by-one for center-padded mode. This patch will be lost on `swift package clean` or `swift package resolve`. If the StreamingEouAsrManager is revisited in the future, this bug needs to be reported/fixed upstream in FluidAudio.
-
-### 3. Other
-
-- **App icon** — Create and include an app icon for the bundle
-- **CI/CD pipeline** — GitHub Actions workflow for build, sign, notarize, publish
-- **DMG packaging** — Create distributable disk image for direct download
-- **Homebrew Cask formula** — For `brew install heard`
-
-### 6. Menu Bar Icons (Pending User Input)
-
-- We need designated custom icons/animations from the user for the following states:
-  - `error` (currently falling back to `menu-bar-idle.gif`)
-  - `userAction` (currently falling back to `menu-bar-idle.gif`)
-  - `isDictating` (currently defaulting to `menu-bar-recording.gif`)
-- **Note on GIF Animations**: SwiftUI's native `MenuBarExtra(image:)` will only render the first frame of the provided `.gif` files. If true animations (e.g. 60fps) are required in the menu bar, we need to replace `MenuBarExtra` with a custom AppKit `NSStatusItem` wrapper that manually loops via a `Timer` and updates the `button.image` frame-by-frame. This should be addressed later based on user preference.
+### 3. Known rough edges
+- Menu bar dropdown uses `.window` style and has a fixed max height — jobs list can clip when many jobs accumulate
+- Dictation hotkey recorder accepts any combo, including ones that clash with system shortcuts
+- Teams detection only matches localized app names — non-English macOS locales may miss Teams
+- Orphan private aggregate devices (`com.execsumo.heard.tap.*`) from crashed recordings are not cleaned up on launch
 
 ## Attempted Approaches for Dictation (Historical)
 
