@@ -1077,11 +1077,11 @@ public final class PipelineProcessor: ObservableObject {
     private var appTranscription: ASRResult?
     private var micTranscription: ASRResult?
     private var appDiarization: DiarizationResult?
-    private var micDiarization: DiarizationResult?
 
     /// Cached models for keep-alive between jobs.
     private var cachedAsrModels: AsrModels?
     private var cachedAsrManager: AsrManager?
+    private var cachedAsrVersion: TranscriptionModel?
     private var modelUnloadTask: Task<Void, Never>?
 
     private static let retryDelays: [TimeInterval] = [5, 30, 300]
@@ -1153,7 +1153,6 @@ public final class PipelineProcessor: ObservableObject {
         appTranscription = nil
         micTranscription = nil
         appDiarization = nil
-        micDiarization = nil
 
         // Schedule model unload based on keep-alive setting
         let keepAlive = settingsStore.settings.pipelineKeepAlive
@@ -1179,6 +1178,7 @@ public final class PipelineProcessor: ObservableObject {
         modelUnloadTask = nil
         cachedAsrModels = nil
         cachedAsrManager = nil
+        cachedAsrVersion = nil
         NSLog("Heard: Pipeline models unloaded")
     }
 
@@ -1330,47 +1330,39 @@ public final class PipelineProcessor: ObservableObject {
         }
     }
 
-    // MARK: - Stage 2: Transcription (Parakeet TDT V2)
+    // MARK: - Stage 2: Transcription
 
     private func runTranscription(_ job: PipelineJob) async throws {
         // Cancel any pending unload — we're using the models now
         modelUnloadTask?.cancel()
         modelUnloadTask = nil
 
-        // Reuse cached models if available, otherwise load fresh
+        let selectedVersion = settingsStore.settings.transcriptionModel
+
+        // Reuse cached models if available and the same version; otherwise load fresh
         let asrManager: AsrManager
-        if let cached = cachedAsrManager {
+        if let cached = cachedAsrManager, cachedAsrVersion == selectedVersion {
+            // Reset decoder state so stale context from the previous job doesn't bleed in
+            await cached.resetDecoderState()
             asrManager = cached
         } else {
-            let models = try await AsrModels.loadFromCache(version: .v2)
-            let manager = AsrManager()
-            try await manager.initialize(models: models)
+            // Version changed or no cache — discard old models and load the selected version
+            cachedAsrModels = nil
+            cachedAsrManager = nil
+            cachedAsrVersion = nil
+
+            let fluidVersion: AsrModelVersion = selectedVersion == .v2 ? .v2 : .v3
+            let models = try await AsrModels.loadFromCache(version: fluidVersion)
+            let asrConfig = ASRConfig(
+                tdtConfig: TdtConfig(blankId: selectedVersion.blankId),
+                encoderHiddenSize: fluidVersion.encoderHiddenSize
+            )
+            let manager = AsrManager(config: asrConfig)
+            try await manager.loadModels(models)
             asrManager = manager
             cachedAsrModels = models
             cachedAsrManager = manager
-        }
-
-        // Configure custom vocabulary boosting if terms are set and CTC models available
-        let vocab = settingsStore.settings.customVocabulary
-        if !vocab.isEmpty {
-            do {
-                let ctcModels = try await CtcModels.downloadAndLoad(variant: .ctc110m)
-                let ctcTokenizer = try await CtcTokenizer.load(
-                    from: CtcModels.defaultCacheDirectory(for: .ctc110m)
-                )
-                let terms = vocab.map { term in
-                    let tokenIds = ctcTokenizer.encode(term)
-                    return CustomVocabularyTerm(text: term, weight: 10.0, ctcTokenIds: tokenIds.isEmpty ? nil : tokenIds)
-                }
-                let context = CustomVocabularyContext(terms: terms)
-                try await asrManager.configureVocabularyBoosting(
-                    vocabulary: context,
-                    ctcModels: ctcModels
-                )
-                NSLog("Heard: Vocabulary boosting configured with \(vocab.count) terms")
-            } catch {
-                NSLog("Heard: Vocabulary boosting unavailable, continuing without: \(error)")
-            }
+            cachedAsrVersion = selectedVersion
         }
 
         // Minimum 16,000 samples (1 second at 16kHz) required by Parakeet
@@ -1392,29 +1384,18 @@ public final class PipelineProcessor: ObservableObject {
     // MARK: - Stage 3: Diarization (LS-EEND + WeSpeaker)
 
     private func runDiarization(_ job: PipelineJob) async throws {
-        // Diarization needs meaningful audio (at least a few seconds)
+        // Diarization only applies to the app track (remote speakers).
+        // The mic track is a single known speaker (the local user) so diarization adds no value.
         let minSamples = 16_000 * 2 // 2 seconds at 16kHz
 
-        let hasAppAudio = appTrack.map { $0.samples.count >= minSamples } ?? false
-        let hasMicAudio = micTrack.map { $0.samples.count >= minSamples } ?? false
-
-        guard hasAppAudio || hasMicAudio else {
-            // Too short for diarization — skip, speaker assignment will use defaults
+        guard let track = appTrack, track.samples.count >= minSamples else {
+            // Too short or missing — skip, speaker assignment will use defaults
             return
         }
 
         let diarizer = OfflineDiarizerManager()
         try await diarizer.prepareModels()
-
-        // Diarize app track (may have multiple remote speakers)
-        if hasAppAudio, let track = appTrack {
-            appDiarization = try await diarizer.process(audio: track.samples)
-        }
-
-        // Diarize mic track (expect 1 speaker = local user)
-        if hasMicAudio, let track = micTrack {
-            micDiarization = try await diarizer.process(audio: track.samples)
-        }
+        appDiarization = try await diarizer.process(audio: track.samples)
 
         // Models are released when diarizer goes out of scope
     }

@@ -19,6 +19,7 @@ public final class DictationManager: ObservableObject {
 
     private var asrManager: AsrManager?
     private var asrModels: AsrModels?
+    private var loadedModelVersion: TranscriptionModel?
     private var micEngine: AVAudioEngine?
     private var streamingTask: Task<Void, Never>?
     private var unloadTask: Task<Void, Never>?
@@ -29,11 +30,11 @@ public final class DictationManager: ObservableObject {
     /// Called when new transcribed text is ready for injection.
     public var onUtterance: ((String) -> Void)?
 
-    /// Custom vocabulary terms to boost during transcription. Set before calling start().
+    /// Custom vocabulary terms (reserved for future post-processing rescoring). Set before calling start().
     public var customVocabulary: [String] = []
 
-    /// Vocabulary that was last configured on the ASR manager, to detect changes.
-    private var configuredVocabulary: [String] = []
+    /// Which Parakeet model version to use. Set before calling start(); changing mid-session reloads models on the next start.
+    public var modelVersion: TranscriptionModel = .v2
 
     /// How long to keep the model loaded after dictation stops (seconds). Set from settings before calling stop().
     public var modelKeepAliveSeconds: TimeInterval = 120
@@ -64,45 +65,23 @@ public final class DictationManager: ObservableObject {
 
         state = .loading
 
-        // Load batch ASR models if needed
-        if asrModels == nil {
-            let models = try await AsrModels.loadFromCache(version: .v2)
+        // Load ASR models if needed, or reload if version changed
+        if asrModels == nil || loadedModelVersion != modelVersion {
+            asrManager = nil
+            asrModels = nil
+            loadedModelVersion = nil
+
+            let fluidVersion: AsrModelVersion = modelVersion == .v2 ? .v2 : .v3
+            let models = try await AsrModels.loadFromCache(version: fluidVersion)
+            let asrConfig = ASRConfig(
+                tdtConfig: TdtConfig(blankId: modelVersion.blankId),
+                encoderHiddenSize: fluidVersion.encoderHiddenSize
+            )
+            let manager = AsrManager(config: asrConfig)
+            try await manager.loadModels(models)
             asrModels = models
-        }
-
-        if asrManager == nil {
-            let manager = AsrManager(config: ASRConfig.default)
-            try await manager.initialize(models: asrModels!)
             asrManager = manager
-            configuredVocabulary = []
-        }
-
-        // (Re)configure vocabulary boosting if terms changed since last start
-        if customVocabulary != configuredVocabulary, let manager = asrManager {
-            if customVocabulary.isEmpty {
-                await manager.disableVocabularyBoosting()
-                configuredVocabulary = []
-            } else {
-                do {
-                    let ctcModels = try await CtcModels.downloadAndLoad(variant: .ctc110m)
-                    let ctcTokenizer = try await CtcTokenizer.load(
-                        from: CtcModels.defaultCacheDirectory(for: .ctc110m)
-                    )
-                    let terms = customVocabulary.map { term in
-                        let tokenIds = ctcTokenizer.encode(term)
-                        return CustomVocabularyTerm(text: term, weight: 10.0, ctcTokenIds: tokenIds.isEmpty ? nil : tokenIds)
-                    }
-                    let context = CustomVocabularyContext(terms: terms)
-                    try await manager.configureVocabularyBoosting(
-                        vocabulary: context,
-                        ctcModels: ctcModels
-                    )
-                    configuredVocabulary = customVocabulary
-                    NSLog("Heard: Vocab boosting configured with \(terms.count) terms")
-                } catch {
-                    NSLog("Heard: Vocab boosting failed: \(error)")
-                }
-            }
+            loadedModelVersion = modelVersion
         }
 
         // Reset state
@@ -308,7 +287,7 @@ public final class DictationManager: ObservableObject {
         unloadTask = nil
         asrManager = nil
         asrModels = nil
-        configuredVocabulary = []
+        loadedModelVersion = nil
         NSLog("Heard: Dictation models unloaded")
     }
 }
