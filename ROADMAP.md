@@ -30,14 +30,19 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 - **Audible meeting-start chime (opt-in).** A short non-intrusive sound confirms recording started. Off by default.
 - **Recording self-test.** After starting, verify that non-zero samples are flowing from both the mic and the tap within 2 s. If not, surface an error and try to recover (re-create the aggregate device once).
 - **Graceful fallback on tap failure.** Already mic-only-on-tap-error; surface a warning banner in the menu bar dropdown so the user knows the meeting will only have their own voice.
+- **`stopWatching` should end the active meeting.** Today toggling watching off mid-meeting cancels the poll loop but leaves `MeetingDetector.activeSnapshot` set and never calls `onMeetingEnded`, so the recording keeps running indefinitely with no transcript to follow. Either fire end on stop, or block the toggle while a meeting is active.
 
 ### Pipeline
+- **Lifetime retry ceiling.** `PipelineProcessor.executeWithRetry` overwrites `retryCount = attempt + 1` where `attempt` is session-local. Combined with `PipelineQueueStore.prepareForResume()` now requeuing both `.failed` and mid-stage jobs on every launch, a permanently-broken job (corrupt WAV, missing file) will burn through 3 retries every app start, forever. Make `retryCount` cumulative across sessions and have `prepareForResume()` leave jobs above a lifetime cap in `.failed` so the user has to explicitly dismiss or retry.
 - **Preprocessing concurrency guard.** Both tracks are currently preprocessed concurrently in a `TaskGroup`. On machines with tight memory, this doubles the peak RAM during VAD. Expose a setting to serialize preprocessing.
 - **Progress in the UI.** The menu bar dropdown shows the current stage but no sub-stage progress. Emit sample-count-based progress from `AsrManager.transcribe` through an `AsyncStream`.
 - **Transcript preview in the dropdown.** Show the first ~100 chars of the most recent completed transcript so the user can verify the right meeting got captured.
 - **Open transcript in reveal mode.** Right-click → "Reveal in Finder" on each job row.
 - **Re-run speaker assignment.** If the user renames a speaker or merges two profiles, older transcripts don't retroactively update. Add a "Re-run speaker assignment" action on completed jobs that re-reads the cached `.wav` files (while they're still within the 48 h window).
 - **Per-job log viewer.** When a job fails, the error string is short. Capture a rolling per-job log (stdout/NSLog lines) and show it in a disclosure view.
+
+### Testing
+- **Golden-file tests for `RosterReader` AX traversal.** The parser and filter are covered, but the actual DOM walk (`findRosterPanel`, `findParticipantList`, `extractTextChildren`) is still untested because it's bound to live `AXUIElement`. Introduce a small protocol wrapper around the AX tree that can be fed captured JSON snapshots from real Teams meetings (various states: pre-join lobby, 2-person call, 10-person call, roster panel open vs collapsed). This is the single highest-value remaining roster test — the one most likely to catch breakage when Teams updates its DOM.
 
 ### Custom vocabulary
 - **Phrase boosting, not just terms.** The CTC path tokenizes whole strings, so multi-word phrases already work — but the UI suggests "terms" and the 3-char minimum blocks short acronyms. Reconsider the minimum and label the field "Terms or short phrases".
