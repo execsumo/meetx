@@ -239,6 +239,26 @@ public final class PipelineQueueStore: ObservableObject {
         Array(jobs.sorted(by: { $0.endTime > $1.endTime }).prefix(3))
     }
 
+    /// Prepare persisted queue state for a fresh app launch. Any job not in a
+    /// terminal state (`.complete`) is re-queued: failed jobs get another attempt,
+    /// and mid-stage jobs (orphaned by a crash) are recovered. `retryCount` is
+    /// preserved so the retry ceiling still applies across sessions.
+    /// Returns the IDs of jobs that were modified.
+    @discardableResult
+    public func prepareForResume() -> [UUID] {
+        var changed: [UUID] = []
+        for index in jobs.indices {
+            let stage = jobs[index].stage
+            guard stage != .complete, stage != .queued else { continue }
+            jobs[index].stage = .queued
+            jobs[index].error = nil
+            jobs[index].stageStartTime = nil
+            changed.append(jobs[index].id)
+        }
+        if !changed.isEmpty { persist() }
+        return changed
+    }
+
     private func persist() {
         try? store.save(jobs, to: url)
     }

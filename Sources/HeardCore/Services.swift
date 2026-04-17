@@ -46,6 +46,70 @@ public struct RecordingSession {
 
 // MARK: - Meeting Detection
 
+/// Outcome of feeding a single poll result into the detection state machine.
+public enum MeetingDetectionAction: Equatable {
+    /// No state change worth acting on (waiting for debounce, in cooldown, etc.).
+    case ignore
+    /// Two consecutive detections observed — caller should build a snapshot and fire onMeetingStarted.
+    case startMeeting
+    /// Detection stopped while a meeting was active — caller should fire onMeetingEnded and stop recording.
+    case endMeeting
+}
+
+/// Pure state machine for Teams meeting detection. Lives independently of IOKit so it can be
+/// driven by tests with synthetic detection results and injected time.
+///
+/// Debounce: requires `detectionThreshold` consecutive positive polls before firing `.startMeeting`,
+/// which guards against transient assertion blips (Teams briefly raises/releases its power assertion
+/// during UI transitions).
+///
+/// Cooldown: after a `.endMeeting`, further polls within `cooldownSeconds` are ignored. This prevents
+/// a recently-ended meeting from immediately re-triggering on the next poll if Teams is slow to
+/// release its assertion.
+public struct MeetingDetectionState: Equatable {
+    public static let detectionThreshold = 2
+    public static let cooldownSeconds: TimeInterval = 5
+
+    public var consecutiveDetections: Int
+    public var cooldownUntil: Date?
+    public var hasActiveSnapshot: Bool
+
+    public init(
+        consecutiveDetections: Int = 0,
+        cooldownUntil: Date? = nil,
+        hasActiveSnapshot: Bool = false
+    ) {
+        self.consecutiveDetections = consecutiveDetections
+        self.cooldownUntil = cooldownUntil
+        self.hasActiveSnapshot = hasActiveSnapshot
+    }
+
+    /// Feed one poll result into the state machine and get the action to perform.
+    public mutating func step(now: Date, detected: Bool) -> MeetingDetectionAction {
+        if let cooldown = cooldownUntil, now < cooldown {
+            return .ignore
+        }
+        cooldownUntil = nil
+
+        if detected {
+            consecutiveDetections += 1
+            if consecutiveDetections >= Self.detectionThreshold, !hasActiveSnapshot {
+                hasActiveSnapshot = true
+                return .startMeeting
+            }
+            return .ignore
+        } else {
+            consecutiveDetections = 0
+            if hasActiveSnapshot {
+                hasActiveSnapshot = false
+                cooldownUntil = now.addingTimeInterval(Self.cooldownSeconds)
+                return .endMeeting
+            }
+            return .ignore
+        }
+    }
+}
+
 @MainActor
 public final class MeetingDetector {
     public private(set) var isWatching = false
@@ -54,8 +118,7 @@ public final class MeetingDetector {
     private var activeSnapshot: MeetingSnapshot?
     private var pollingTask: Task<Void, Never>?
     private var rosterPollingTask: Task<Void, Never>?
-    private var consecutiveDetections = 0
-    private var cooldownUntil: Date?
+    private var detectionState = MeetingDetectionState()
     private var isSimulated = false
 
     private static let teamsProcessNames: Set<String> = [
@@ -81,7 +144,7 @@ public final class MeetingDetector {
         isWatching = false
         pollingTask?.cancel()
         pollingTask = nil
-        consecutiveDetections = 0
+        detectionState.consecutiveDetections = 0
     }
 
     private func startPolling() {
@@ -98,34 +161,30 @@ public final class MeetingDetector {
     private func poll() {
         // Don't interfere with simulated meetings
         if isSimulated { return }
-        if let cooldown = cooldownUntil, Date() < cooldown { return }
-        cooldownUntil = nil
 
         let result = Self.detectTeamsMeeting()
+        let action = detectionState.step(now: Date(), detected: result.detected)
 
-        if result.detected {
-            consecutiveDetections += 1
-            if consecutiveDetections >= 2, activeSnapshot == nil {
-                let title = Self.extractTeamsWindowTitle(pid: result.pid) ?? ""
-                let rosterNames = RosterReader.readRoster(teamsPID: result.pid)
-                let snapshot = MeetingSnapshot(
-                    title: title,
-                    startedAt: Date(),
-                    teamsPID: result.pid,
-                    rosterNames: rosterNames
-                )
-                activeSnapshot = snapshot
-                startRosterPolling()
-                onMeetingStarted(snapshot)
-            }
-        } else {
-            consecutiveDetections = 0
-            if let snapshot = activeSnapshot {
-                stopRosterPolling()
-                activeSnapshot = nil
-                cooldownUntil = Date().addingTimeInterval(5)
-                onMeetingEnded(snapshot)
-            }
+        switch action {
+        case .ignore:
+            return
+        case .startMeeting:
+            let title = Self.extractTeamsWindowTitle(pid: result.pid) ?? ""
+            let rosterNames = RosterReader.readRoster(teamsPID: result.pid)
+            let snapshot = MeetingSnapshot(
+                title: title,
+                startedAt: Date(),
+                teamsPID: result.pid,
+                rosterNames: rosterNames
+            )
+            activeSnapshot = snapshot
+            startRosterPolling()
+            onMeetingStarted(snapshot)
+        case .endMeeting:
+            guard let snapshot = activeSnapshot else { return }
+            stopRosterPolling()
+            activeSnapshot = nil
+            onMeetingEnded(snapshot)
         }
     }
 
@@ -1186,34 +1245,60 @@ public final class PipelineProcessor: ObservableObject {
 
     private func processWithRetry(_ job: PipelineJob) async {
         var working = job
-        for attempt in 0..<Self.maxRetries {
+        await Self.executeWithRetry(
+            job: &working,
+            maxRetries: Self.maxRetries,
+            retryDelays: Self.retryDelays,
+            isNonRetryable: { ($0 as? PipelineError)?.isNonRetryable ?? false },
+            onUpdate: { [weak self] updated in self?.queueStore.update(updated) },
+            sleep: { seconds in try await Task.sleep(for: .seconds(seconds)) },
+            process: { [weak self] job in
+                guard let self else { throw CancellationError() }
+                try await self.process(&job)
+            }
+        )
+    }
+
+    /// Pure-ish retry driver. Public for testing — invoked by `processWithRetry`
+    /// with real dependencies. Semantics:
+    /// - Success: returns with the job's final state from `process`.
+    /// - CancellationError: returns silently, no further updates.
+    /// - Non-retryable error: sets `.failed`, persists once, returns.
+    /// - Retryable error: increments `retryCount`, records `error`, persists, sleeps, retries.
+    /// - Exhausted retries: sets `.failed`, persists.
+    public static func executeWithRetry(
+        job: inout PipelineJob,
+        maxRetries: Int,
+        retryDelays: [TimeInterval],
+        isNonRetryable: (Error) -> Bool,
+        onUpdate: (PipelineJob) -> Void,
+        sleep: (TimeInterval) async throws -> Void,
+        process: (inout PipelineJob) async throws -> Void
+    ) async {
+        for attempt in 0..<maxRetries {
             do {
-                try await process(&working)
+                try await process(&job)
                 return
             } catch is CancellationError {
                 return
             } catch {
-                working.error = error.localizedDescription
-                working.retryCount = attempt + 1
+                job.error = error.localizedDescription
+                job.retryCount = attempt + 1
 
-                // Fail immediately for errors that will never succeed on retry
-                if let pipelineError = error as? PipelineError, pipelineError.isNonRetryable {
-                    NSLog("Heard: Non-retryable error for job \(working.id): \(error)")
-                    working.stage = .failed
-                    queueStore.update(working)
+                if isNonRetryable(error) {
+                    job.stage = .failed
+                    onUpdate(job)
                     return
                 }
 
-                queueStore.update(working)
+                onUpdate(job)
 
-                if attempt < Self.maxRetries - 1 {
-                    let delay = Self.retryDelays[min(attempt, Self.retryDelays.count - 1)]
-                    NSLog("Heard: Stage \(working.stage.rawValue) failed (attempt \(attempt + 1)), retrying in \(Int(delay))s: \(error)")
-                    try? await Task.sleep(for: .seconds(delay))
+                if attempt < maxRetries - 1 {
+                    let delay = retryDelays[min(attempt, retryDelays.count - 1)]
+                    try? await sleep(delay)
                 } else {
-                    NSLog("Heard: Exhausted retries for job \(working.id): \(error)")
-                    working.stage = .failed
-                    queueStore.update(working)
+                    job.stage = .failed
+                    onUpdate(job)
                 }
             }
         }
@@ -1600,11 +1685,11 @@ public final class PipelineProcessor: ObservableObject {
     }
 }
 
-enum PipelineError: LocalizedError {
+public enum PipelineError: LocalizedError {
     case noAudioFiles
     case recordingTooShort
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .noAudioFiles: return "No audio files found for this recording"
         case .recordingTooShort: return "Recording too short to transcribe"
@@ -1612,7 +1697,7 @@ enum PipelineError: LocalizedError {
     }
 
     /// Errors that should not be retried (will never succeed on retry).
-    var isNonRetryable: Bool {
+    public var isNonRetryable: Bool {
         switch self {
         case .noAudioFiles, .recordingTooShort: return true
         }

@@ -84,11 +84,7 @@ public final class AppModel: ObservableObject {
         }
 
         // Retry failed jobs once on relaunch (handles transient failures from previous session)
-        for var job in queueStore.jobs where job.stage == .failed {
-            job.stage = .queued
-            job.error = nil
-            queueStore.update(job)
-        }
+        queueStore.prepareForResume()
 
         model.pipelineProcessor.runNextIfNeeded()
 

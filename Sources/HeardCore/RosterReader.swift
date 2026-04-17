@@ -128,6 +128,31 @@ public enum RosterReader {
 
     // MARK: - Strategy 3: Parse Window Title (via Accessibility API)
 
+    /// Pure parser: given a Teams window title like "Alice, Bob | Microsoft Teams",
+    /// return the participant names. Returns [] if the title doesn't match the
+    /// expected pattern or has fewer than 2 names.
+    public static func parseParticipantsFromWindowTitle(_ title: String) -> [String] {
+        guard title.contains(" | Microsoft Teams") else { return [] }
+        let prefix = title.replacingOccurrences(
+            of: #"\s*\|\s*Microsoft Teams.*$"#,
+            with: "",
+            options: .regularExpression
+        )
+        guard prefix.contains(",") else { return [] }
+
+        let names = prefix.components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && $0.count >= 2 }
+
+        return names.count >= 2 ? names : []
+    }
+
+    /// Pure filter: drop UI control strings, too-short/too-long entries, and duplicates.
+    /// Exposed for testing — roster extraction strategies feed their raw results through this.
+    public static func filterNamesForTesting(_ names: [String]) -> [String] {
+        filterNames(names)
+    }
+
     private static func parseWindowTitle() -> [String] {
         guard AXIsProcessTrusted() else { return [] }
 
@@ -155,19 +180,10 @@ public enum RosterReader {
             for window in windows {
                 var titleRef: AnyObject?
                 guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef) == .success,
-                      let title = titleRef as? String,
-                      title.contains(" | Microsoft Teams")
+                      let title = titleRef as? String
                 else { continue }
-
-                // Pattern: "Name1, Name2, Name3 | Microsoft Teams"
-                let prefix = title.replacingOccurrences(of: #"\s*\|\s*Microsoft Teams.*$"#, with: "", options: .regularExpression)
-                guard prefix.contains(",") else { continue }
-
-                let names = prefix.components(separatedBy: ",")
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty && $0.count >= 2 }
-
-                if names.count >= 2 { return names }
+                let names = parseParticipantsFromWindowTitle(title)
+                if !names.isEmpty { return names }
             }
         }
         return []

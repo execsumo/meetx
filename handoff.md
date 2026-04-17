@@ -11,8 +11,7 @@ The app builds cleanly with `swift build` and runs as a menu bar app on macOS 15
 ### Meeting Detection
 - Polls `IOPMCopyAssertionsByProcess()` every 3 seconds for Teams power assertions
 - Extracts meeting title from Teams window via Accessibility API (`AXUIElement`)
-- Debounce: requires 2 consecutive detections before triggering
-- Cooldown: 5-second delay after meeting end before re-detection
+- Debounce/cooldown logic lives in the pure `MeetingDetectionState` value type — 2 consecutive detections to start, 5s cooldown after end — so the state machine is driven by tests without IOKit
 - Simulation mode available for testing without a real Teams call (with `isSimulated` flag to prevent polling interference)
 
 ### Audio Capture
@@ -30,8 +29,8 @@ The app builds cleanly with `swift build` and runs as a menu bar app on macOS 15
 - **Transcription**: Parakeet TDT V3 via `AsrManager` with 16k sample minimum guard; decoder state reset between cached jobs to prevent context bleed
 - **Diarization**: `OfflineDiarizerManager` on app track only (mic track is a single known speaker, diarization was unused)
 - **Speaker Assignment**: Cosine distance matching against `SpeakerStore`, confidence margin filtering, embedding diversity management
-- Non-retryable errors (no audio, too short) fail immediately; transient errors retry 3x with backoff (5s, 30s, 5min)
-- Jobs persist to JSON and survive app restart; failed jobs auto-retry on relaunch
+- Non-retryable errors (no audio, too short) fail immediately; transient errors retry 3x with backoff (5s, 30s, 5min) via `PipelineProcessor.executeWithRetry` (closure-driven, testable)
+- Jobs persist to JSON and survive app restart. `PipelineQueueStore.prepareForResume()` runs at launch: failed jobs *and* mid-stage jobs (orphaned by a crash during `.preprocessing`/`.transcribing`/`.diarizing`/`.assigning`) are re-queued so they resume on the next pipeline run
 - Pipeline fires `onPipelineIdle` callback so app phase returns to dormant
 - Markdown transcript output with timestamped speaker-labeled segments
 
@@ -104,8 +103,8 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 - Supports `--release` and `--sign IDENTITY` flags for distribution builds
 
 ### Testing
-- `HeardTests` executable target with 30+ tests covering: VadSegmentMap, cosine distance, SpeakerMatcher, SegmentMerger, AudioPreprocessor, TranscriptWriter, SpeakerStore, PipelineQueueStore
-- Custom lightweight test harness (no XCTest/Xcode dependency)
+- `HeardTests` executable target with 86 tests across: VadSegmentMap, cosine distance, SpeakerMatcher (incl. threshold/margin edge cases), SegmentMerger, AudioPreprocessor, TranscriptWriter, SpeakerStore, PipelineQueueStore, pipeline resume/recovery (`prepareForResume`), meeting detection state machine (`MeetingDetectionState`), retry executor (`PipelineProcessor.executeWithRetry`), and RosterReader (window-title parser + filter)
+- Custom lightweight test harness (no XCTest/Xcode dependency). `test(...)` for sync, `testAsync(...)` for async bodies
 - Run with `swift run HeardTests`
 
 ### Persistence
