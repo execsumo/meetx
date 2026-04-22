@@ -16,7 +16,7 @@ No cloud, no LLM, no external APIs — everything runs on-device on Apple Silico
 - **Roster-aware auto-naming** — When one speaker is unmatched and exactly one roster name is unclaimed, the roster name is assigned automatically without prompting.
 - **Speaker naming window** — When unmatched speakers remain, a dedicated "Name Speakers" window opens with a **playable audio clip** (~10 s of each speaker's clearest speech, extracted from the 48 kHz recording), a text field pre-populated with any roster suggestion, and a 120 s auto-dismiss countdown.
 - **Custom vocabulary boosting** — CTC-based keyword boosting via `Parakeet CTC 110M` applied to both meeting transcription and dictation. Terms are added from Settings → General (min 3 chars, max 50 terms). Falls back gracefully if the CTC model can't be loaded.
-- **Persistent job queue** — `pipeline_queue.json` survives app restarts; failed jobs are re-queued once on relaunch. Non-retryable errors (no audio, too short) fail immediately; transient errors retry 3× with exponential backoff (5 s, 30 s, 5 min).
+- **Persistent job queue** — `pipeline_queue.json` survives app restarts; failed jobs are re-queued on relaunch up to a lifetime cap of 6 retries. Non-retryable errors (no audio, too short) fail immediately; transient errors retry 3× per session with exponential backoff (5 s, 30 s, 5 min). User-initiated retry resets the count.
 - **Long-meeting handling** — 4 h hard cap; on hit, the current recording is finalized and a fresh one starts if the meeting is still active.
 - **Markdown output** — Timestamped, speaker-labeled transcripts written to a configurable output folder. Consecutive segments from the same speaker are merged into continuous blocks.
 

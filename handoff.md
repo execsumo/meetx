@@ -32,8 +32,9 @@ The app builds cleanly with `swift build` and runs as a menu bar app on macOS 15
 - **Transcription**: Parakeet TDT V3 via `AsrManager` with 16k sample minimum guard; decoder state reset between cached jobs to prevent context bleed
 - **Diarization**: `OfflineDiarizerManager` on app track only (mic track is a single known speaker, diarization was unused)
 - **Speaker Assignment**: Cosine distance matching against `SpeakerStore`, confidence margin filtering, embedding diversity management
-- Non-retryable errors (no audio, too short) fail immediately; transient errors retry 3x with backoff (5s, 30s, 5min) via `PipelineProcessor.executeWithRetry` (closure-driven, testable)
-- Jobs persist to JSON and survive app restart. `PipelineQueueStore.prepareForResume()` runs at launch: failed jobs *and* mid-stage jobs (orphaned by a crash during `.preprocessing`/`.transcribing`/`.diarizing`/`.assigning`) are re-queued so they resume on the next pipeline run
+- Non-retryable errors (no audio, too short) fail immediately; transient errors retry 3x per session with backoff (5s, 30s, 5min) via `PipelineProcessor.executeWithRetry` (closure-driven, testable)
+- `retryCount` is cumulative across sessions with a lifetime cap of 6 (`PipelineProcessor.lifetimeRetryLimit`). User-initiated retry (`retryFailedJob`) resets `retryCount = 0` for a fresh budget.
+- Jobs persist to JSON and survive app restart. `PipelineQueueStore.prepareForResume()` runs at launch: failed/mid-stage jobs (orphaned by crash) are re-queued if `retryCount < lifetimeRetryLimit`; jobs at/above the cap stay `.failed` until the user explicitly retries.
 - Pipeline fires `onPipelineIdle` callback so app phase returns to dormant
 - Markdown transcript output with timestamped speaker-labeled segments
 
@@ -106,7 +107,7 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 - Flags: `--release`, `--sign IDENTITY`, `--output DIR`, `--install` (quit running app, replace `/Applications/Heard.app`, relaunch — anchors TCC grants to a stable path), `--reset` (also `tccutil reset` Microphone/ScreenCapture/Accessibility before install — implies `--install`)
 
 ### Testing
-- `HeardTests` executable target with 86 tests across: VadSegmentMap, cosine distance, SpeakerMatcher (incl. threshold/margin edge cases), SegmentMerger, AudioPreprocessor, TranscriptWriter, SpeakerStore, PipelineQueueStore, pipeline resume/recovery (`prepareForResume`), meeting detection state machine (`MeetingDetectionState`), retry executor (`PipelineProcessor.executeWithRetry`), and RosterReader (window-title parser + filter)
+- `HeardTests` executable target with 100 tests across: VadSegmentMap, cosine distance, SpeakerMatcher (incl. threshold/margin edge cases), SegmentMerger, AudioPreprocessor, TranscriptWriter, SpeakerStore, PipelineQueueStore, pipeline resume/recovery (`prepareForResume`), meeting detection state machine (`MeetingDetectionState`), retry executor (`PipelineProcessor.executeWithRetry`) incl. lifetime cap, Teams identification, MeetingDetector lifecycle, and RosterReader (window-title parser + filter)
 - Custom lightweight test harness (no XCTest/Xcode dependency). `test(...)` for sync, `testAsync(...)` for async bodies
 - Run with `swift run HeardTests`
 
