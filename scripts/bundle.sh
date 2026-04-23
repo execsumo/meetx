@@ -11,8 +11,8 @@ set -euo pipefail
 #   --install     Quit any running Heard, replace /Applications/Heard.app with the
 #                 fresh build, and relaunch it. Installing to a stable path keeps TCC
 #                 grants attached to a single bundle across rebuilds.
-#   --reset       Reset Microphone, Screen Recording, and Accessibility grants for
-#                 com.execsumo.heard before launch. Implies --install.
+#   --reset       Reset Microphone, Screen Recording, Accessibility, and AudioCapture
+#                 grants for com.execsumo.heard before launch. Implies --install.
 
 BUNDLE_ID="com.execsumo.heard"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -91,10 +91,11 @@ if [[ -n "$SIGN_IDENTITY" ]]; then
     codesign --verify --verbose "$APP_BUNDLE"
     echo ""
     echo "    NOTE: After each rebuild, you may need to re-grant TCC permissions."
-    echo "    If Accessibility or Screen Recording shows 'Grant' after restart, run:"
+    echo "    If permissions show 'Grant' after restart, run:"
     echo "      tccutil reset Accessibility com.execsumo.heard"
     echo "      tccutil reset ScreenCapture com.execsumo.heard"
-    echo "    Then re-grant both in System Settings → Privacy & Security."
+    echo "      tccutil reset AudioCapture com.execsumo.heard"
+    echo "    Then re-grant in System Settings → Privacy & Security."
 else
     # Ad-hoc sign so macOS will run it locally
     echo "==> Ad-hoc signing (no 'Dev Cert' found)..."
@@ -122,6 +123,7 @@ if [[ "$INSTALL" -eq 1 ]]; then
         tccutil reset Microphone "$BUNDLE_ID" || true
         tccutil reset ScreenCapture "$BUNDLE_ID" || true
         tccutil reset Accessibility "$BUNDLE_ID" || true
+        tccutil reset AudioCapture "$BUNDLE_ID" || true
     fi
 
     echo "==> Installing to $INSTALLED..."
