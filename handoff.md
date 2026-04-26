@@ -60,7 +60,7 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 - **`TextInjector.swift`**: CGEvent unicode insertion via `keyboardSetUnicodeString` + `postToPid` (same approach as FluidVoice). Falls back to HID tap, then clipboard paste. All methods require Accessibility permission.
 - **`HotkeyManager.swift`**: Carbon `RegisterEventHotKey` for global Ctrl+Shift+D hotkey. Does NOT require Accessibility permission. Supports configurable hotkey combos stored in `AppSettings`.
 - **Global hotkey**: Working. Ctrl+Shift+D toggles dictation on/off from any app.
-- **Mic capture**: Working. 48kHz → 16kHz resampling via linear interpolation in tap callback.
+- **Mic capture**: Working. Tap installed at the bus's native format; one `AVAudioConverter` handles both stereo→mono downmix and any-rate→16 kHz resampling in the callback (proper polyphase filter, not linear interpolation).
 - **Speech recognition**: Working perfectly. Tested transcriptions: "Alright, did Claude figure it out this time? Beep bop boop.", "Is this working now?", etc.
 - **Text diffing**: Working. Only injects new words, not the full retranscription.
 - **UI**: Dictation settings tab with enable toggle, hotkey display, model download card, Accessibility warning, live status. Menu bar shows dictation state.
