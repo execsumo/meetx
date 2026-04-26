@@ -236,38 +236,34 @@ public final class DictationManager: ObservableObject {
         let inputNode = engine.inputNode
         let hwFormat = inputNode.outputFormat(forBus: 0)
 
-        let monoFormat = AVAudioFormat(
+        let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
-            sampleRate: hwFormat.sampleRate,
+            sampleRate: 16000,
             channels: 1,
             interleaved: false
         )!
 
-        // Resample to 16kHz for ASR
-        let targetRate: Double = 16000
-        let sourceSampleRate = hwFormat.sampleRate
+        // Converter handles both channel downmix (stereo→mono) and sample-rate
+        // conversion in one pass, so the tap can be installed with the bus's
+        // native format as Apple's docs require.
+        guard let converter = AVAudioConverter(from: hwFormat, to: targetFormat) else {
+            throw NSError(domain: "Heard", code: 1, userInfo: [NSLocalizedDescriptionKey: "AVAudioConverter init failed"])
+        }
+
         let audioBuffer = self.audioBuffer
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: monoFormat) { buffer, _ in
-            guard let channelData = buffer.floatChannelData else { return }
-            let frameCount = Int(buffer.frameLength)
-            let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
-
-            // Linear interpolation resample to 16kHz
-            let ratio = sourceSampleRate / targetRate
-            let outputCount = Int(Double(frameCount) / ratio)
-            var resampled = [Float](repeating: 0, count: outputCount)
-            for i in 0..<outputCount {
-                let srcIdx = Double(i) * ratio
-                let idx = Int(srcIdx)
-                let frac = Float(srcIdx - Double(idx))
-                if idx < frameCount - 1 {
-                    resampled[i] = samples[idx] * (1 - frac) + samples[idx + 1] * frac
-                } else if idx < frameCount {
-                    resampled[i] = samples[idx]
-                }
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: hwFormat) { buffer, _ in
+            let outFrames = AVAudioFrameCount(ceil(Double(buffer.frameLength) * 16000.0 / hwFormat.sampleRate))
+            guard let outBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outFrames) else { return }
+            var inputConsumed = false
+            converter.convert(to: outBuffer, error: nil) { _, outStatus in
+                if inputConsumed { outStatus.pointee = .noDataNow; return nil }
+                inputConsumed = true
+                outStatus.pointee = .haveData
+                return buffer
             }
-            audioBuffer.append(resampled)
+            guard outBuffer.frameLength > 0, let channelData = outBuffer.floatChannelData else { return }
+            audioBuffer.append(Array(UnsafeBufferPointer(start: channelData[0], count: Int(outBuffer.frameLength))))
         }
 
         engine.prepare()

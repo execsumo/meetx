@@ -1486,7 +1486,9 @@ public final class PipelineProcessor: ObservableObject {
         micTranscription = nil
         appDiarization = nil
 
-        // Schedule model unload based on keep-alive setting
+        // Default keepAlive is 0: unload immediately. Back-to-back meetings don't
+        // cause rapid reloads because meeting 2 records while meeting 1's pipeline
+        // runs — the gap before reload is always at least meeting 2's remaining duration.
         let keepAlive = settingsStore.settings.pipelineKeepAlive
         if keepAlive > 0 {
             scheduleModelUnload(after: keepAlive)
