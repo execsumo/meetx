@@ -908,6 +908,7 @@ private struct PermissionRow: View {
                     Button("Grant…") {
                         switch permission.id {
                         case "microphone": model.permissionCenter.requestMicrophone()
+                        case "audioCapture": model.permissionCenter.openAudioCaptureSettings()
                         case "screenCapture": model.permissionCenter.openScreenCaptureSettings()
                         case "accessibility": model.permissionCenter.openAccessibilitySettings()
                         default: break

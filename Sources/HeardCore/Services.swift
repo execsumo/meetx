@@ -376,6 +376,8 @@ public final class RecordingManager: ObservableObject {
 
     /// Callback for max-duration split: enqueue current session, optionally restart.
     public var onMaxDurationReached: (@MainActor (RecordingSession) -> Void)?
+    /// Called once when the self-test confirms non-zero app audio is flowing.
+    public var onAppAudioCaptureConfirmed: (() -> Void)?
 
     /// The Teams PID, title, and roster for the current recording (needed for re-start on split).
     private var currentTeamsPID: pid_t?
@@ -823,6 +825,7 @@ public final class RecordingManager: ObservableObject {
             if ctx.nonZeroFrames > 0 {
                 NSLog("Heard: Self-test PASSED at +%.1fs (%d non-zero of %d frames, peak=%.4f)",
                       elapsed, ctx.nonZeroFrames, ctx.totalFrames, ctx.peakAmplitude)
+                self?.onAppAudioCaptureConfirmed?()
             } else {
                 let reason = ctx.renderCycles == 0
                     ? "no render callbacks fired"
@@ -1047,6 +1050,12 @@ public final class PermissionCenter: ObservableObject {
                 state: microphoneState()
             ),
             PermissionStatus(
+                id: "audioCapture",
+                title: "System Audio",
+                purpose: "Capture Teams audio to record other participants. The permission dialog appears when you join your first meeting.",
+                state: audioCaptureState()
+            ),
+            PermissionStatus(
                 id: "screenCapture",
                 title: "Screen Recording",
                 purpose: "Tap Teams audio to record the other participants' voices. Required for dual-track recording.",
@@ -1069,6 +1078,18 @@ public final class PermissionCenter: ObservableObject {
         CGPreflightScreenCaptureAccess()
     }
 
+    public func markAudioCaptureGranted() {
+        UserDefaults.standard.set(true, forKey: "audioCaptureTCCGranted")
+        refresh()
+    }
+
+    public func openAudioCaptureSettings() {
+        // No direct API to request kTCCServiceAudioCapture — the dialog appears
+        // automatically when AudioHardwareCreateProcessTap is first called (i.e. on
+        // meeting join). Open the Microphone privacy page as the closest system UI.
+        openSystemSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+    }
+
     public func requestMicrophone() {
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
@@ -1087,6 +1108,10 @@ public final class PermissionCenter: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             Task { @MainActor in self?.refresh() }
         }
+    }
+
+    private func audioCaptureState() -> PermissionState {
+        UserDefaults.standard.bool(forKey: "audioCaptureTCCGranted") ? .granted : .recommended
     }
 
     private func microphoneState() -> PermissionState {

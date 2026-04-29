@@ -73,6 +73,10 @@ public final class AppModel: ObservableObject {
         // Destroy orphaned private aggregate devices left behind by previous crashes
         AudioDeviceCleanup.cleanOrphanAggregateDevices()
 
+        recordingManager.onAppAudioCaptureConfirmed = { [weak permissionCenter] in
+            permissionCenter?.markAudioCaptureGranted()
+        }
+
         // Sync launch-at-login state with settings
         let currentlyEnabled = LaunchAtLogin.isEnabled
         if settingsStore.settings.launchAtLogin != currentlyEnabled {
