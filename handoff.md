@@ -76,7 +76,7 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 - Keyboard input works in Settings — `WindowActivationCoordinator` reference-counts `.accessory`/`.regular` transitions across the Settings and Name Speakers windows so closing one while the other is still open never steals keyboard focus
 - Output folder picker via `NSOpenPanel`
 - Custom vocabulary management lives in the General tab (add/remove terms, 3-char min, 50-term cap) — terms applied to both transcription and dictation via CTC boosting
-- Speaker table with inline rename, merge, delete (context menu), search, and sort (Name / Last Seen / Meeting Count)
+- Speaker table with inline rename, merge, delete (context menu), search, and sort (Name / Last Seen / Meeting Count); a leading **Voice** column has a play/stop button that replays the speaker's saved voice clip via a shared `SpeakerClipController` so only one clip plays at a time
 - Model download status with progress bars and per-card download buttons, plus a "Download All Models" shortcut
 - Permission status with grant buttons and System Settings deep-links (Microphone + Screen Recording + Accessibility), surfaced inside the General tab
 - Launch at login via `SMAppService`
@@ -95,10 +95,12 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 - Audio playback via `AVAudioPlayer` with play/stop toggle per speaker
 - Suggested names from Teams roster when available (shown as orange hint text)
 - Text fields pre-populated with roster suggestions for quick confirmation
-- "Save All" commits all entered names, "Skip All" saves with generic labels
+- **"Save & Close"** commits all entered names and dismisses the window via `dismissWindow(id: "speaker-naming")`; **"Skip All"** saves remaining unnamed speakers with `Speaker N` labels and dismisses
 - 120-second auto-dismiss countdown — saves unnamed speakers with "Speaker N" labels
 - Speaker profiles created with voice embeddings from diarization, enabling future recognition
-- Clip files saved to `recordings/` dir and cleaned up after naming
+- **No duplicate "Speaker N" profiles**: `SpeakerMatcher.updateDatabase` only refreshes already-matched profiles. Roster-auto-assigned new speakers get a profile with the resolved name in `runSpeakerAssignment`. Unresolved new speakers are persisted exactly once — by `saveSpeakerName` (real name) or `skipNaming`/auto-dismiss (`Speaker N`).
+- **Transcript file is rewritten with real names**: `NamingCandidate` carries the meeting's `transcriptPath`, and `TranscriptWriter.renameSpeaker(in:from:to:)` rewrites both `**Speaker N:**` body tags and the `**Participants:**` header line in place when the user saves a name.
+- **Clips persist for replay**: clips are extracted to `recordings/` during the prompt, then moved to the persistent `speaker_clips/` directory by `AudioClipExtractor.persistClip` when the user saves (or skips) and stored on `SpeakerProfile.audioClipURL`. They survive the 48-hour stale-recording cleanup and power the play button in the Speakers settings tab. Deleting a speaker also deletes its persisted clip.
 - `AudioClipExtractor.swift` handles WAV segment extraction from original 48kHz recordings
 - Menu bar shows "Name Speakers..." button and orange badge icon during `.userAction` phase
 - Window also accessible from menu bar dropdown if dismissed
@@ -116,8 +118,9 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 
 ### Persistence
 - `SettingsStore`: UserDefaults-backed app settings (includes `dictationEnabled`, `dictationHotkey`)
-- `SpeakerStore`: JSON file at `~/Library/Application Support/Heard/speakers.json`
+- `SpeakerStore`: JSON file at `~/Library/Application Support/Heard/speakers.json` — `SpeakerProfile` now carries an optional `audioClipURL` pointing into `speaker_clips/`
 - `PipelineQueueStore`: JSON file at `~/Library/Application Support/Heard/queue.json`
+- `~/Library/Application Support/Heard/speaker_clips/`: persistent voice samples for replay (kept beyond the 48-hour `recordings/` cleanup)
 
 ## Architecture
 
