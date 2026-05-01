@@ -45,7 +45,11 @@ public struct TrackDiarizationResult {
 public enum SpeakerMatcher {
 
     /// Cosine distance threshold for matching (lower = more similar).
-    public static let matchThreshold: Float = 0.40
+    /// 0.30 is on the strict side of typical WeSpeaker ranges — the previous 0.40
+    /// caused false-positive matches against unrelated existing profiles, so newly
+    /// detected speakers were silently classified as already-known and the naming
+    /// prompt never fired.
+    public static let matchThreshold: Float = 0.30
 
     /// Minimum gap between best and second-best match to accept a match.
     public static let confidenceMargin: Float = 0.10
@@ -107,6 +111,7 @@ public enum SpeakerMatcher {
 
             if let match {
                 usedProfileIDs.insert(match.profileID)
+                NSLog("Heard: matchSpeakers → '\(detected.speakerID)' matched profile '\(match.name)' (distance=\(String(format: "%.3f", match.distance)), margin=\(String(format: "%.3f", match.margin)))")
                 results.append(MatchResult(
                     detectedSpeakerID: detected.speakerID,
                     assignedName: match.name,
@@ -117,6 +122,7 @@ public enum SpeakerMatcher {
             } else {
                 let name = "Speaker \(unnamedCounter)"
                 unnamedCounter += 1
+                NSLog("Heard: matchSpeakers → '\(detected.speakerID)' has no confident match → '\(name)' (will trigger naming prompt)")
                 results.append(MatchResult(
                     detectedSpeakerID: detected.speakerID,
                     assignedName: name,

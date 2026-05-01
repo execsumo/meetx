@@ -1176,7 +1176,7 @@ func runSpeakerMatcherEdgeTests() {
 
     let ref: [Float] = [1, 0, 0, 0, 0]
 
-    test("Distance just above matchThreshold (0.40) → no match") {
+    test("Distance well above matchThreshold (0.30) → no match") {
         let bob = profile("Bob", [ref])
         let probe = vector(atDistance: 0.41, from: ref)
         let result = SpeakerMatcher.matchSpeakers(
@@ -1190,7 +1190,7 @@ func runSpeakerMatcherEdgeTests() {
 
     test("Distance just below matchThreshold with clear margin → match") {
         let bob = profile("Bob", [ref])
-        let probe = vector(atDistance: 0.20, from: ref) // well below 0.40
+        let probe = vector(atDistance: 0.20, from: ref) // well below 0.30
         let result = SpeakerMatcher.matchSpeakers(
             embeddings: [SpeakerEmbedding(speakerID: "R_0", vector: probe)],
             database: [bob],

@@ -92,7 +92,19 @@ public struct MenuBarView: View {
         }
         .frame(width: 260)
         .onChange(of: model.showNamingPrompt) { _, show in
+            NSLog("Heard: MenuBarView observed showNamingPrompt=\(show)")
             if show {
+                openWindow(id: "speaker-naming")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
+        // Belt-and-suspenders: if showNamingPrompt was already true (e.g. a prior prompt
+        // closed without resetting it), the onChange above won't fire when new candidates
+        // arrive. Watching the candidates array transitioning from empty → non-empty
+        // covers that path independently.
+        .onChange(of: model.namingCandidates.isEmpty) { wasEmpty, isEmpty in
+            if wasEmpty && !isEmpty {
+                NSLog("Heard: MenuBarView observed namingCandidates became non-empty (\(model.namingCandidates.count))")
                 openWindow(id: "speaker-naming")
                 NSApp.activate(ignoringOtherApps: true)
             }

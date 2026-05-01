@@ -130,6 +130,7 @@ public final class AppModel: ObservableObject {
             settingsStore: settingsStore,
             modelCatalog: modelCatalog,
             onNamingRequired: { [weak self] candidates in
+                NSLog("Heard: AppModel.onNamingRequired received \(candidates.count) candidate(s) — opening naming window")
                 self?.namingCandidates = candidates
                 self?.phase = .userAction
                 self?.showNamingPrompt = true
