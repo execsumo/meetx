@@ -8,50 +8,37 @@ public enum DictationState: String {
     case listening
 }
 
-/// Manages real-time dictation using FluidAudio's batch AsrManager with a polling loop.
-/// Re-transcribes accumulated audio every 0.3s and uses stability-based tracking to
-/// only inject words that have been consistent across consecutive transcription cycles.
+/// Manages real-time dictation using FluidAudio's SlidingWindowAsrManager.
+/// Audio is fed as AVAudioPCMBuffer; the manager handles overlapping windows and
+/// stable/volatile split internally. Confirmed text is injected incrementally;
+/// any remaining volatile text is flushed on stop.
 @MainActor
 public final class DictationManager: ObservableObject {
 
     @Published public private(set) var state: DictationState = .idle
     @Published public var partialTranscript: String = ""
 
-    private var asrManager: AsrManager?
+    private var slidingWindowMgr: SlidingWindowAsrManager?
     private var asrModels: AsrModels?
     private var loadedModelVersion: TranscriptionModel?
     private var micEngine: AVAudioEngine?
-    private var streamingTask: Task<Void, Never>?
+    private var updateConsumerTask: Task<Void, Never>?
     private var unloadTask: Task<Void, Never>?
-
-    /// Thread-safe audio sample buffer
-    private let audioBuffer = LockedAudioBuffer()
 
     /// Called when new transcribed text is ready for injection.
     public var onUtterance: ((String) -> Void)?
 
-    /// Custom vocabulary terms (reserved for future post-processing rescoring). Set before calling start().
+    /// Custom vocabulary terms for boosting. Set before calling start().
     public var customVocabulary: [String] = []
 
-    /// Which Parakeet model version to use. Set before calling start(); changing mid-session reloads models on the next start.
+    /// Which Parakeet model version to use. Changing mid-session reloads models on the next start.
     public var modelVersion: TranscriptionModel = .v2
 
-    /// How long to keep the model loaded after dictation stops (seconds). Set from settings before calling stop().
+    /// How long to keep the model loaded after dictation stops (seconds).
     public var modelKeepAliveSeconds: TimeInterval = 120
 
-    /// How often to re-transcribe accumulated audio (seconds).
-    private let chunkInterval: TimeInterval = 0.3
-
-    /// Minimum samples before attempting transcription (0.5s at 16kHz).
-    private let minSamples: Int = 8000
-
-    // MARK: - Injection tracking
-
-    /// Words that have been injected into the target app (irreversible).
-    private var committedWords: [String] = []
-
-    /// Previous cycle's transcript split into words, for stability comparison.
-    private var prevCycleWords: [String] = []
+    /// Full text injected so far in the current session (confirmed deltas only).
+    private var injectedText: String = ""
 
     public init() {}
 
@@ -65,61 +52,78 @@ public final class DictationManager: ObservableObject {
 
         state = .loading
 
-        // Load ASR models if needed, or reload if version changed
+        let fluidVersion: AsrModelVersion = modelVersion == .v2 ? .v2 : .v3
+
+        // Load models if needed or version changed; otherwise reuse cached models.
         if asrModels == nil || loadedModelVersion != modelVersion {
-            asrManager = nil
             asrModels = nil
             loadedModelVersion = nil
-
-            let fluidVersion: AsrModelVersion = modelVersion == .v2 ? .v2 : .v3
             let models = try await AsrModels.loadFromCache(version: fluidVersion)
-            let asrConfig = ASRConfig(
-                tdtConfig: TdtConfig(blankId: modelVersion.blankId),
-                encoderHiddenSize: fluidVersion.encoderHiddenSize
-            )
-            let manager = AsrManager(config: asrConfig)
-            try await manager.loadModels(models)
             asrModels = models
-            asrManager = manager
             loadedModelVersion = modelVersion
         }
 
-        // Reset state
-        audioBuffer.clear()
-        committedWords = []
-        prevCycleWords = []
+        // Create a fresh sliding-window manager for this session.
+        // SlidingWindowAsrManager's input stream is single-use (finish() closes it),
+        // so a new instance is required each time.
+        let mgr = SlidingWindowAsrManager(config: .streaming)
+        try await mgr.loadModels(asrModels!)
+
+        // Restore vocab boosting if terms are configured and CTC models are on disk.
+        if !customVocabulary.isEmpty {
+            let ctcDir = CtcModels.defaultCacheDirectory(for: .ctc110m)
+            if CtcModels.modelsExist(at: ctcDir) {
+                do {
+                    let ctcModels = try await CtcModels.downloadAndLoad(variant: .ctc110m)
+                    let ctcTokenizer = try await CtcTokenizer.load(from: ctcDir)
+                    let terms = customVocabulary.map { term -> CustomVocabularyTerm in
+                        let tokenIds = ctcTokenizer.encode(term)
+                        return CustomVocabularyTerm(
+                            text: term, weight: 10.0,
+                            ctcTokenIds: tokenIds.isEmpty ? nil : tokenIds
+                        )
+                    }
+                    try await mgr.configureVocabularyBoosting(
+                        vocabulary: CustomVocabularyContext(terms: terms),
+                        ctcModels: ctcModels
+                    )
+                    NSLog("Heard: Dictation vocab boosting configured (%d terms)", customVocabulary.count)
+                } catch {
+                    NSLog("Heard: Dictation vocab boosting unavailable, continuing without: %@", error.localizedDescription)
+                }
+            }
+        }
+
+        slidingWindowMgr = mgr
+        injectedText = ""
         partialTranscript = ""
 
-        // Start mic capture
-        try startMicCapture()
+        try await mgr.startStreaming(source: .microphone)
+        try startMicCapture(mgr: mgr)
         state = .listening
 
-        // Start streaming transcription loop
-        startStreamingLoop()
+        startUpdateConsumer(mgr: mgr)
     }
 
     public func stop() async {
         guard state == .listening else { return }
 
         stopMicCapture()
-        streamingTask?.cancel()
-        streamingTask = nil
+        updateConsumerTask?.cancel()
+        updateConsumerTask = nil
 
-        // Do one final transcription of all accumulated audio
-        await transcribeAccumulated(isFinal: true)
+        // Flush any remaining audio and inject whatever wasn't confirmed yet.
+        if let mgr = slidingWindowMgr {
+            let finalText = (try? await mgr.finish()) ?? ""
+            injectDelta(to: finalText)
+        }
 
-        audioBuffer.clear()
-        committedWords = []
-        prevCycleWords = []
+        slidingWindowMgr = nil
+        injectedText = ""
         partialTranscript = ""
         state = .idle
 
-        // Schedule model unload
-        unloadTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(self?.modelKeepAliveSeconds ?? 120))
-            guard let self, !Task.isCancelled else { return }
-            self.unloadModels()
-        }
+        scheduleModelUnload()
     }
 
     public func toggle() async throws {
@@ -130,143 +134,61 @@ public final class DictationManager: ObservableObject {
         }
     }
 
-    // MARK: - Streaming Loop
+    // MARK: - Update consumption
 
-    private func startStreamingLoop() {
-        streamingTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(600))
-                guard !Task.isCancelled, let self else { break }
-                await self.transcribeAccumulated(isFinal: false)
+    private func startUpdateConsumer(mgr: SlidingWindowAsrManager) {
+        updateConsumerTask = Task { [weak self] in
+            let updates = await mgr.transcriptionUpdates
+            for await update in updates {
+                guard let self, !Task.isCancelled else { break }
+                await self.handleUpdate(update, mgr: mgr)
             }
         }
     }
 
-    private func transcribeAccumulated(isFinal: Bool) async {
-        guard let manager = asrManager else { return }
+    private func handleUpdate(
+        _ update: SlidingWindowTranscriptionUpdate,
+        mgr: SlidingWindowAsrManager
+    ) async {
+        let confirmed = await mgr.confirmedTranscript
+        let volatile = await mgr.volatileTranscript
 
-        let sampleCount = audioBuffer.count
-        guard sampleCount >= minSamples else { return }
+        // Update the display with the full running transcript.
+        partialTranscript = [confirmed, volatile].filter { !$0.isEmpty }.joined(separator: " ")
 
-        let samples = audioBuffer.getSamples()
-
-        do {
-            var decoderState = TdtDecoderState.make()
-            let result = try await manager.transcribe(
-                samples, decoderState: &decoderState, language: .english
-            )
-            let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            guard !trimmed.isEmpty else { return }
-
-            let words = trimmed.split(separator: " ").map(String.init)
-            partialTranscript = trimmed
-
-            if isFinal {
-                injectFinal(words)
-            } else {
-                injectStable(words)
-            }
-        } catch {
-            NSLog("Heard: Dictation transcription error: \(error)")
+        // Inject any newly confirmed text since the last injection.
+        if update.isConfirmed {
+            injectDelta(to: confirmed)
         }
     }
 
-    // MARK: - Stability-based injection
+    /// Inject the portion of `newText` that extends beyond what we've already injected.
+    private func injectDelta(to newText: String) {
+        guard newText.count > injectedText.count else { return }
+        // Confirmed text always grows — verify prefix hasn't changed.
+        guard newText.hasPrefix(injectedText) else { return }
 
-    /// Inject words that are stable (same in this cycle and the previous cycle)
-    /// and haven't been injected yet.
-    private func injectStable(_ words: [String]) {
-        // Find how many words match between this cycle and previous cycle
-        var stableCount = 0
-        for (a, b) in zip(words, prevCycleWords) {
-            if normalizedMatch(a, b) { stableCount += 1 } else { break }
-        }
+        let raw = String(newText.dropFirst(injectedText.count))
+        let delta = raw.trimmingCharacters(in: .whitespaces)
+        guard !delta.isEmpty else { return }
 
-        prevCycleWords = words
-
-        // Verify committed prefix still matches the current transcript
-        guard committedPrefixMatches(words) else { return }
-
-        // Inject any stable words beyond what we've already committed
-        if stableCount > committedWords.count {
-            let newWords = Array(words[committedWords.count..<stableCount])
-            let space = committedWords.isEmpty ? "" : " "
-            let text = space + newWords.joined(separator: " ")
-            onUtterance?(text)
-            committedWords.append(contentsOf: newWords)
-        }
-    }
-
-    /// On stop, inject any remaining words beyond what was committed.
-    private func injectFinal(_ words: [String]) {
-        guard committedPrefixMatches(words) else { return }
-
-        if words.count > committedWords.count {
-            let newWords = Array(words[committedWords.count...])
-            let space = committedWords.isEmpty ? "" : " "
-            let text = space + newWords.joined(separator: " ")
-            onUtterance?(text)
-            committedWords.append(contentsOf: newWords)
-        }
-    }
-
-    /// Check that our committed words still match the start of the transcript.
-    /// If the model has rewritten text we already injected, we can't fix it,
-    /// so we stop injecting to avoid duplicates.
-    private func committedPrefixMatches(_ words: [String]) -> Bool {
-        guard !committedWords.isEmpty else { return true }
-        guard words.count >= committedWords.count else { return false }
-        for (i, committed) in committedWords.enumerated() {
-            if !normalizedMatch(committed, words[i]) {
-                return false
-            }
-        }
-        return true
-    }
-
-    /// Compare two words ignoring case and trailing punctuation,
-    /// so "working" matches "working." and "Mom" matches "mom".
-    private func normalizedMatch(_ a: String, _ b: String) -> Bool {
-        a.lowercased().trimmingCharacters(in: .punctuationCharacters)
-            == b.lowercased().trimmingCharacters(in: .punctuationCharacters)
+        let space = injectedText.isEmpty ? "" : " "
+        onUtterance?(space + delta)
+        injectedText = newText
     }
 
     // MARK: - Mic Capture
 
-    private func startMicCapture() throws {
+    private func startMicCapture(mgr: SlidingWindowAsrManager) throws {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
         let hwFormat = inputNode.outputFormat(forBus: 0)
 
-        let targetFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 16000,
-            channels: 1,
-            interleaved: false
-        )!
-
-        // Converter handles both channel downmix (stereo→mono) and sample-rate
-        // conversion in one pass, so the tap can be installed with the bus's
-        // native format as Apple's docs require.
-        guard let converter = AVAudioConverter(from: hwFormat, to: targetFormat) else {
-            throw NSError(domain: "Heard", code: 1, userInfo: [NSLocalizedDescriptionKey: "AVAudioConverter init failed"])
-        }
-
-        let audioBuffer = self.audioBuffer
-
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: hwFormat) { buffer, _ in
-            let outFrames = AVAudioFrameCount(ceil(Double(buffer.frameLength) * 16000.0 / hwFormat.sampleRate))
-            guard let outBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outFrames) else { return }
-            var inputConsumed = false
-            converter.convert(to: outBuffer, error: nil) { _, outStatus in
-                if inputConsumed { outStatus.pointee = .noDataNow; return nil }
-                inputConsumed = true
-                outStatus.pointee = .haveData
-                return buffer
-            }
-            guard outBuffer.frameLength > 0, let channelData = outBuffer.floatChannelData else { return }
-            audioBuffer.append(Array(UnsafeBufferPointer(start: channelData[0], count: Int(outBuffer.frameLength))))
+        // SlidingWindowAsrManager handles format conversion internally.
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: hwFormat) { [weak mgr] buffer, _ in
+            guard let mgr else { return }
+            // Hop to the actor from the tap thread.
+            Task { await mgr.streamAudio(buffer) }
         }
 
         engine.prepare()
@@ -280,44 +202,21 @@ public final class DictationManager: ObservableObject {
         micEngine = nil
     }
 
-    /// Unload ASR models from memory. Called automatically after keep-alive expires, or manually via force unload.
+    // MARK: - Model lifecycle
+
+    private func scheduleModelUnload() {
+        unloadTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(self?.modelKeepAliveSeconds ?? 120))
+            guard let self, !Task.isCancelled else { return }
+            self.unloadModels()
+        }
+    }
+
     public func unloadModels() {
         unloadTask?.cancel()
         unloadTask = nil
-        asrManager = nil
         asrModels = nil
         loadedModelVersion = nil
         NSLog("Heard: Dictation models unloaded")
-    }
-}
-
-// MARK: - Thread-safe audio buffer
-
-private final class LockedAudioBuffer: @unchecked Sendable {
-    private var samples: [Float] = []
-    private let lock = NSLock()
-
-    var count: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return samples.count
-    }
-
-    func append(_ newSamples: [Float]) {
-        lock.lock()
-        samples.append(contentsOf: newSamples)
-        lock.unlock()
-    }
-
-    func getSamples() -> [Float] {
-        lock.lock()
-        defer { lock.unlock() }
-        return samples
-    }
-
-    func clear() {
-        lock.lock()
-        samples.removeAll()
-        lock.unlock()
     }
 }

@@ -1846,6 +1846,12 @@ public final class PipelineProcessor: ObservableObject {
     }
 
     // MARK: - Stage 3: Diarization (LS-EEND + WeSpeaker)
+    //
+    // Upgrade path: FluidAudio also provides SortformerDiarizer (~11% DER vs ~17.7% here).
+    // Sortformer is blocked by an embedding gap — its DiarizerTimeline contains no per-segment
+    // speaker embeddings, which the SpeakerAssigner needs for cross-meeting identity.
+    // To adopt it: run Sortformer for segmentation, then extract WeSpeaker embeddings on each
+    // segment, and convert to DiarizationResult before passing downstream.
 
     private func runDiarization(_ job: PipelineJob) async throws {
         // Diarization only applies to the app track (remote speakers).
