@@ -19,10 +19,10 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 - **Menu bar dropdown height.** The `.window` style has a fixed max height; with many jobs queued, the bottom of the panel can clip. Add an internal `ScrollView` for the jobs list.
 
 ### Dictation UX
-- **Hotkey recorder validation.** The Record sheet accepts any combo today. Block combinations that clash with common system shortcuts (⌘Tab, ⌘Space, ⌘Q, etc.) and show a soft warning for single-modifier combos.
-- **Spoken command passthrough.** Strip or interpret common fillers (`"uh"`, `"um"`) before injection — trivial post-processing that dramatically improves feel without adding any new models.
-- **Visible dictation indicator.** When dictation is active but the menu bar is hidden, the user has no feedback. Add an optional transient HUD (similar to macOS volume overlay) that fades while listening.
-- **Graceful AX permission flow.** If Accessibility is revoked mid-session, text injection silently fails. Detect the failure and surface a one-shot banner with a re-grant button.
+- ~~**Hotkey recorder validation.**~~ Done — `HotkeyRecorderView` validates combos: no-modifier and known system shortcuts (⌘Tab, ⌘Space, ⌘Q, ⌘H, ⌘M, ⌘W, ⌃Space, screenshot shortcuts) are blocked with a red error and Save disabled; single-modifier combos show an orange soft warning but allow saving.
+- ~~**Spoken command passthrough.**~~ Done — `DictationManager.stripFillers` removes standalone instances of "uh", "um", "er", "ah", "hmm", "hm", "uhh", "umm", "mhm" (case-insensitive, word-boundary safe) before text injection. `injectedText` still advances past fillers so they're never re-processed.
+- ~~**Visible dictation indicator.**~~ Done — `DictationHUD` is a floating `NSPanel` (`.floating` level, `nonactivatingPanel`, `canJoinAllSpaces`) showing a waveform icon + "Dictating" pill at bottom-centre of the screen. Appears on start, dims to 35% alpha after 2.5 s, fades out on stop. Opt-in via Settings → Dictation → "Show Dictation Indicator".
+- ~~**Graceful AX permission flow.**~~ Done — `AppModel.startAXPolling()` checks `AXIsProcessTrusted()` every 2 s while dictating. On revocation, sets `dictationAXLost`, stops dictation and hides the HUD. The menu bar dropdown shows an orange banner ("Accessibility access was revoked") with a "Re-grant Access…" button (calls `TextInjector.ensureAccessibility()`) and a Dismiss button.
 
 ### Meeting detection & recording
 - ~~**Teams bundle-ID fallback.**~~ Done — `MeetingDetector.isTeamsMainApp` matches `com.microsoft.teams` / `com.microsoft.teams2` first, with the localized-name set kept as a fallback for builds under unfamiliar bundle IDs.

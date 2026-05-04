@@ -176,6 +176,9 @@ public final class DictationManager: ObservableObject {
         injectDelta(to: confirmed)
     }
 
+    /// Filler words stripped before injection. Matched case-insensitively at word boundaries.
+    private static let fillerWords: Set<String> = ["uh", "um", "er", "ah", "hmm", "hm", "uhh", "umm", "mhm"]
+
     /// Inject the portion of `newText` that extends beyond what we've already injected.
     private func injectDelta(to newText: String) {
         guard newText.count > injectedText.count else { return }
@@ -183,12 +186,23 @@ public final class DictationManager: ObservableObject {
         guard newText.hasPrefix(injectedText) else { return }
 
         let raw = String(newText.dropFirst(injectedText.count))
-        let delta = raw.trimmingCharacters(in: .whitespaces)
+        // Strip filler words before injecting; always advance injectedText so we
+        // don't reprocess the same chunk on subsequent calls.
+        let needsLeadingSpace = !injectedText.isEmpty
+        injectedText = newText
+        let delta = stripFillers(raw).trimmingCharacters(in: .whitespaces)
         guard !delta.isEmpty else { return }
 
-        let space = injectedText.isEmpty ? "" : " "
-        onUtterance?(space + delta)
-        injectedText = newText
+        onUtterance?((needsLeadingSpace ? " " : "") + delta)
+    }
+
+    private func stripFillers(_ text: String) -> String {
+        let words = text.split(separator: " ", omittingEmptySubsequences: true)
+        let stripped = words.filter { word in
+            let bare = word.trimmingCharacters(in: .punctuationCharacters).lowercased()
+            return !Self.fillerWords.contains(bare)
+        }
+        return stripped.joined(separator: " ")
     }
 
     // MARK: - Mic Capture

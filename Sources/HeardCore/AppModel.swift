@@ -20,6 +20,8 @@ public final class AppModel: ObservableObject {
     @Published public var isDictating = false
     @Published public var partialTranscript = ""
     @Published public var dictationError: String?
+    /// Set when AX permission is revoked while dictation is active. Cleared on dismiss or next start.
+    @Published public var dictationAXLost = false
     // Prevents concurrent toggles: rapid hotkey presses during start/stop are dropped.
     private var dictationToggleInFlight = false
 
@@ -240,16 +242,20 @@ public var filteredSpeakers: [SpeakerProfile] {
                 isDictating = false
                 partialTranscript = ""
                 dictationError = nil
+                if settingsStore.settings.showDictationHUD { DictationHUD.shared.hide() }
             } else {
                 do {
+                    dictationAXLost = false
                     dictationManager.customVocabulary = settingsStore.settings.customVocabulary
                     dictationManager.modelVersion = settingsStore.settings.transcriptionModel
                     dictationManager.modelKeepAliveSeconds = settingsStore.settings.dictationKeepAlive
                     try await dictationManager.start()
                     isDictating = true
                     dictationError = nil
-                    // Observe partial transcript updates
+                    if settingsStore.settings.showDictationHUD { DictationHUD.shared.show() }
+                    // Observe partial transcript and watch for AX revocation
                     observeDictationPartials()
+                    startAXPolling()
                 } catch {
                     isDictating = false
                     dictationError = error.localizedDescription
@@ -336,6 +342,29 @@ public var filteredSpeakers: [SpeakerProfile] {
                 try? await Task.sleep(for: .milliseconds(100))
             }
         }
+    }
+
+    /// Polls AXIsProcessTrusted() while dictation is active. If access is revoked mid-session,
+    /// stops dictation and raises dictationAXLost so the menu bar can show a re-grant banner.
+    private func startAXPolling() {
+        Task { [weak self] in
+            while self?.isDictating == true {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self, self.isDictating else { break }
+                if !AXIsProcessTrusted() {
+                    self.dictationAXLost = true
+                    self.isDictating = false
+                    if self.settingsStore.settings.showDictationHUD { DictationHUD.shared.hide() }
+                    await self.dictationManager.stop()
+                    NSLog("Heard: Dictation stopped — Accessibility access revoked mid-session")
+                    break
+                }
+            }
+        }
+    }
+
+    public func acknowledgeAXLost() {
+        dictationAXLost = false
     }
 
     public func simulateMeeting() {
