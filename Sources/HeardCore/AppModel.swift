@@ -20,6 +20,8 @@ public final class AppModel: ObservableObject {
     @Published public var isDictating = false
     @Published public var partialTranscript = ""
     @Published public var dictationError: String?
+    // Prevents concurrent toggles: rapid hotkey presses during start/stop are dropped.
+    private var dictationToggleInFlight = false
 
     public let settingsStore: SettingsStore
     public let speakerStore: SpeakerStore
@@ -227,7 +229,11 @@ public var filteredSpeakers: [SpeakerProfile] {
     // MARK: - Dictation
 
     public func toggleDictation() {
+        // Drop rapid presses while a start/stop is already in progress.
+        guard !dictationToggleInFlight else { return }
+        dictationToggleInFlight = true
         Task {
+            defer { dictationToggleInFlight = false }
             if isDictating {
                 dictationManager.modelKeepAliveSeconds = settingsStore.settings.dictationKeepAlive
                 await dictationManager.stop()
@@ -245,6 +251,7 @@ public var filteredSpeakers: [SpeakerProfile] {
                     // Observe partial transcript updates
                     observeDictationPartials()
                 } catch {
+                    isDictating = false
                     dictationError = error.localizedDescription
                     NSLog("Heard: Dictation start failed: \(error)")
                 }
