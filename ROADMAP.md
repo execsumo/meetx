@@ -60,6 +60,7 @@ Features that fit the on-device, single-process philosophy but require more code
 - **Bulk-delete / archive old speakers.** Speakers with no meeting activity in N months.
 
 ### Pipeline & output
+- **Live meeting notes.** During an active meeting, allow the user to add timestamped text notes via a menu bar button or hotkey (e.g., Ctrl+Shift+N). Notes are stored in-memory and merged into the final transcript as `[HH:MM:SS] **Note:** text here` blocks, inserted chronologically. Future enhancements: voice notes that auto-transcribe, notes outside active meetings, note editing/deletion.
 - **Transcript re-ingest on settings change.** When the user edits their name or re-assigns a speaker, offer to regenerate recent transcripts (with the raw WAVs still on disk).
 - **Alternative output formats.** Out of scope per spec today, but worth re-evaluating: plain `.txt`, `.srt`, VTT for video workflows, or a lightweight HTML with anchors.
 - **Configurable date format.** The `YYMMDD_Title.md` filename is fixed. Let power users switch to `YYYY-MM-DD_Title.md`.
