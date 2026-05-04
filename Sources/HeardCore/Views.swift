@@ -132,13 +132,25 @@ public struct MenuBarView: View {
                         .foregroundStyle(.secondary)
                 )
             )
-        } else if let job = model.queueStore.activeJob, job.stage != .complete && job.stage != .failed {
+        } else if let job = model.queueStore.processingJob {
             StatusHeaderCard(
                 dotColor: .orange,
                 pulsing: true,
                 title: "Processing",
                 titleColor: .orange,
-                subtitle: job.stage.displayName,
+                subtitle: processingSubtitle(for: job),
+                trailing: nil
+            )
+        } else if model.phase == .processing {
+            // Phase says we're processing but the queue hasn't surfaced a job yet
+            // (e.g. between meeting end and the first stage transition). Keep the
+            // user informed instead of falling through to "Watching".
+            StatusHeaderCard(
+                dotColor: .orange,
+                pulsing: true,
+                title: "Processing",
+                titleColor: .orange,
+                subtitle: "Preparing transcription…",
                 trailing: nil
             )
         } else if model.isDictating {
@@ -165,6 +177,17 @@ public struct MenuBarView: View {
                 )
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    private func processingSubtitle(for job: PipelineJob) -> String {
+        switch job.stage {
+        case .queued: return "Queued — preparing to transcribe"
+        case .preprocessing: return "Preprocessing audio"
+        case .transcribing: return "Transcribing"
+        case .diarizing: return "Identifying speakers"
+        case .assigning: return "Matching speakers"
+        case .complete, .failed: return job.stage.displayName
         }
     }
 

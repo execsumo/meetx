@@ -760,6 +760,30 @@ private func makeJob(
         try expectEqual(store.activeJob?.id, first.id)
     }
 
+    test("processingJob skips both complete and failed jobs") {
+        let (store, _) = try makeQueueStore()
+        // An old failed job ahead of an in-progress one must not block the
+        // status display from showing the active job.
+        store.enqueue(makeJob(stage: .failed))
+        let inProgress = makeJob(stage: .diarizing)
+        store.enqueue(inProgress)
+        try expectEqual(store.processingJob?.id, inProgress.id)
+    }
+
+    test("processingJob is nil when only complete and failed jobs remain") {
+        let (store, _) = try makeQueueStore()
+        store.enqueue(makeJob(stage: .complete))
+        store.enqueue(makeJob(stage: .failed))
+        try expect(store.processingJob == nil)
+    }
+
+    test("processingJob includes a queued job") {
+        let (store, _) = try makeQueueStore()
+        let queued = makeJob(stage: .queued)
+        store.enqueue(queued)
+        try expectEqual(store.processingJob?.id, queued.id)
+    }
+
     test("Queue survives full round-trip with error and retryCount") {
         let (store, url) = try makeQueueStore()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
