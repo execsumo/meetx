@@ -33,6 +33,8 @@ public final class AppModel: ObservableObject {
     public let dictationManager: DictationManager
     public var hotkeyManager: HotkeyManager! = nil
 
+    private var cancellables = Set<AnyCancellable>()
+
     public static func bootstrap() -> AppModel {
         try? FileManager.default.ensureHeardDirectories()
 
@@ -148,6 +150,18 @@ public final class AppModel: ObservableObject {
             guard let self else { return }
             self.pipelineProcessor.enqueueFinishedRecording(session, endedAt: Date())
         }
+
+        // Forward child store changes so SwiftUI views observing `AppModel`
+        // re-render when nested ObservableObjects update (queue progresses through
+        // stages, recording session changes, etc.). Without this bridge, the menu
+        // bar status header stays frozen on whatever it showed at the last
+        // AppModel.objectWillChange event.
+        queueStore.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        recordingManager.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
 
         self.meetingDetector = MeetingDetector(
             onMeetingStarted: { [weak self] snapshot in
@@ -432,7 +446,7 @@ public var filteredSpeakers: [SpeakerProfile] {
             namingDismissTask?.cancel()
             namingDismissTask = nil
             showNamingPrompt = false
-            phase = queueStore.activeJob == nil ? .dormant : .processing
+            phase = queueStore.processingJob == nil ? .dormant : .processing
         }
     }
 

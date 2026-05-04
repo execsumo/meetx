@@ -305,6 +305,14 @@ public final class PipelineQueueStore: ObservableObject {
         jobs.first { $0.stage != .complete }
     }
 
+    /// The first non-terminal job in the queue — either currently being processed
+    /// or waiting to be picked up. Excludes `.complete` and `.failed` so a stale
+    /// failed job can't masquerade as the active job and cause the menu bar status
+    /// to fall through to "Watching" while a real job is in flight behind it.
+    public var processingJob: PipelineJob? {
+        jobs.first { $0.stage != .complete && $0.stage != .failed }
+    }
+
     public var recentJobs: [PipelineJob] {
         Array(jobs.sorted(by: { $0.endTime > $1.endTime }).prefix(3))
     }
