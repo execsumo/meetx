@@ -34,7 +34,9 @@ public final class DictationHUD {
         fadeTimer?.invalidate()
         fadeTimer = nil
         animateAlpha(to: 0, duration: 0.25) { [weak self] in
-            self?.panel?.orderOut(nil)
+            Task { @MainActor in
+                self?.panel?.orderOut(nil)
+            }
         }
     }
 
