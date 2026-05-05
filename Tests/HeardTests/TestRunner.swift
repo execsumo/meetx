@@ -163,8 +163,8 @@ func runSpeakerMatcherTests() {
             SpeakerEmbedding(speakerID: "R_1", vector: [0, 1, 0]),
         ]
         let results = SpeakerMatcher.matchSpeakers(embeddings: embeddings, database: [], localUserName: "Me")
-        try expectEqual(results[0].assignedName, "Speaker 1")
-        try expectEqual(results[1].assignedName, "Speaker 2")
+        try expect(results[0].assignedName.hasPrefix("Speaker_"))
+        try expect(results[1].assignedName.hasPrefix("Speaker_"))
         try expect(results[0].isNewSpeaker)
     }
 
@@ -176,22 +176,21 @@ func runSpeakerMatcherTests() {
         let results = SpeakerMatcher.matchSpeakers(
             embeddings: embeddings,
             database: [],
-            localUserName: "Me",
-            startingSpeakerNumber: 7
+            localUserName: "Me"
         )
-        try expectEqual(results[0].assignedName, "Speaker 7")
-        try expectEqual(results[1].assignedName, "Speaker 8")
+        try expectEqual(results.count, 2)
+        try expect(results[0].assignedName.hasPrefix("Speaker_"))
+        try expect(results[1].assignedName.hasPrefix("Speaker_"))
     }
 
-    test("startingSpeakerNumber below 1 clamps to 1") {
+    test("Unknown speakers get unique UUID labels") {
         let embeddings = [SpeakerEmbedding(speakerID: "R_0", vector: [1, 0, 0])]
         let results = SpeakerMatcher.matchSpeakers(
             embeddings: embeddings,
             database: [],
-            localUserName: "Me",
-            startingSpeakerNumber: 0
+            localUserName: "Me"
         )
-        try expectEqual(results[0].assignedName, "Speaker 1")
+        try expect(results[0].assignedName.hasPrefix("Speaker_"))
     }
 
     test("Matches known speaker by embedding") {
@@ -212,7 +211,7 @@ func runSpeakerMatcherTests() {
         )
         let embeddings = [SpeakerEmbedding(speakerID: "R_0", vector: [0, 0, 0, 0, 1])]
         let results = SpeakerMatcher.matchSpeakers(embeddings: embeddings, database: [profile], localUserName: "Me")
-        try expectEqual(results[0].assignedName, "Speaker 1")
+        try expect(results[0].assignedName.hasPrefix("Speaker_"))
         try expect(results[0].isNewSpeaker)
     }
 }
@@ -495,62 +494,7 @@ func runTranscriptWriterTests() {
         try expectEqual(store.speakers.first?.embeddings.count, 2)
     }
 
-    test("SpeakerStore nextSpeakerNumber starts at 1 on a fresh store") {
-        let tmpDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("HeardTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tmpDir) }
-
-        let store = SpeakerStore(url: tmpDir.appendingPathComponent("speakers.json"))
-        try expectEqual(store.nextSpeakerNumber, 1)
-    }
-
-    test("SpeakerStore reserveSpeakerNumbers returns start and advances counter") {
-        let tmpDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("HeardTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tmpDir) }
-
-        let store = SpeakerStore(url: tmpDir.appendingPathComponent("speakers.json"))
-        try expectEqual(store.reserveSpeakerNumbers(count: 3), 1)
-        try expectEqual(store.nextSpeakerNumber, 4)
-        try expectEqual(store.reserveSpeakerNumbers(count: 2), 4)
-        try expectEqual(store.nextSpeakerNumber, 6)
-    }
-
-    test("SpeakerStore reserveSpeakerNumbers with zero count is a no-op") {
-        let tmpDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("HeardTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tmpDir) }
-
-        let store = SpeakerStore(url: tmpDir.appendingPathComponent("speakers.json"))
-        _ = store.reserveSpeakerNumbers(count: 5)
-        let before = store.nextSpeakerNumber
-        try expectEqual(store.reserveSpeakerNumbers(count: 0), before)
-        try expectEqual(store.nextSpeakerNumber, before)
-    }
-
-    test("SpeakerStore counter persists across reload") {
-        let tmpDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("HeardTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tmpDir) }
-
-        let url = tmpDir.appendingPathComponent("speakers.json")
-        let store = SpeakerStore(url: url)
-        _ = store.reserveSpeakerNumbers(count: 4)
-        store.upsert(SpeakerProfile(
-            id: UUID(), name: "Speaker 1", embeddings: [],
-            firstSeen: Date(), lastSeen: Date(), meetingCount: 1
-        ))
-
-        let reloaded = SpeakerStore(url: url)
-        try expectEqual(reloaded.nextSpeakerNumber, 5)
-        try expectEqual(reloaded.speakers.count, 1)
-    }
-
-    test("SpeakerStore migrates legacy bare-array file by deriving counter") {
+    test("SpeakerStore migrates legacy bare-array file") {
         let tmpDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("HeardTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
@@ -568,7 +512,6 @@ func runTranscriptWriterTests() {
 
         let store = SpeakerStore(url: url)
         try expectEqual(store.speakers.count, 3)
-        try expectEqual(store.nextSpeakerNumber, 6, "Highest 'Speaker N' is 5, so next is 6")
     }
 
     test("SpeakerStore delete") {
@@ -1371,7 +1314,7 @@ func runSpeakerMatcherEdgeTests() {
             database: [bob],
             localUserName: "Me"
         )
-        try expectEqual(result[0].assignedName, "Speaker 1")
+        try expect(result[0].assignedName.hasPrefix("Speaker_"))
         try expect(result[0].isNewSpeaker)
     }
 
@@ -1397,7 +1340,7 @@ func runSpeakerMatcherEdgeTests() {
             database: [bob, alice],
             localUserName: "Me"
         )
-        try expectEqual(result[0].assignedName, "Speaker 1")
+        try expect(result[0].assignedName.hasPrefix("Speaker_"))
         try expect(result[0].isNewSpeaker, "Ambiguous match must be treated as a new speaker")
     }
 
@@ -1426,7 +1369,7 @@ func runSpeakerMatcherEdgeTests() {
             localUserName: "Me"
         )
         try expectEqual(result[0].assignedName, "Bob")
-        try expectEqual(result[1].assignedName, "Speaker 1")
+        try expect(result[1].assignedName.hasPrefix("Speaker_"))
         try expect(result[1].isNewSpeaker)
     }
 

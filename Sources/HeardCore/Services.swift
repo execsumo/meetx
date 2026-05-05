@@ -2018,20 +2018,11 @@ public final class PipelineProcessor: ObservableObject {
             var seenIDs = Set<String>()
             let uniqueEmbeddings = embeddings.filter { seenIDs.insert($0.speakerID).inserted }
 
-            // Use the persisted global counter so each unmatched speaker gets a
-            // globally unique "Speaker N". After matching we reserve only the
-            // numbers we actually consumed, so the counter stays tight.
-            let startingNumber = speakerStore.nextSpeakerNumber
-
             let matches = SpeakerMatcher.matchSpeakers(
                 embeddings: uniqueEmbeddings,
                 database: speakerStore.speakers,
-                localUserName: me,
-                startingSpeakerNumber: startingNumber
+                localUserName: me
             )
-
-            let consumedNumbers = matches.filter { $0.isNewSpeaker }.count
-            _ = speakerStore.reserveSpeakerNumbers(count: consumedNumbers)
 
             var nameMap: [String: String] = [:]
             for match in matches {

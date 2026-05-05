@@ -80,6 +80,24 @@ public struct MenuBarView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
 
+            if !model.queueStore.recentJobs.isEmpty {
+                Divider()
+                
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Recent Meetings")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 4)
+                    
+                    ForEach(model.queueStore.recentJobs) { job in
+                        JobRow(job: job, model: model)
+                    }
+                }
+                .padding(.horizontal, 6)
+                .padding(.bottom, 4)
+            }
+
             Divider()
 
             VStack(spacing: 1) {
@@ -333,6 +351,72 @@ private struct MenuBarRowStyle: ButtonStyle {
                     : Color.clear,
                 in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline)
             )
+    }
+}
+
+private struct JobRow: View {
+    let job: PipelineJob
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        Button(action: {
+            if job.stage == .complete {
+                model.openTranscript(job)
+            }
+        }) {
+            HStack(spacing: 10) {
+                Image(systemName: iconName)
+                    .font(.system(size: 13))
+                    .foregroundStyle(iconColor)
+                    .frame(width: 18, alignment: .center)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(job.meetingTitle.isEmpty ? "Meeting" : job.meetingTitle)
+                        .font(.system(.body, design: .default))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(job.startTime.formatted(date: .omitted, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(MenuBarRowStyle())
+        .contextMenu {
+            if job.stage == .complete {
+                Button("Reveal in Finder") {
+                    if let url = job.transcriptPath {
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
+                }
+            } else if job.stage == .failed {
+                Button("Retry") {
+                    model.retry(job)
+                }
+            }
+            Button("Dismiss") {
+                model.dismissJob(job)
+            }
+        }
+    }
+
+    private var iconName: String {
+        switch job.stage {
+        case .complete: return "doc.text.fill"
+        case .failed: return "exclamationmark.triangle.fill"
+        default: return "arrow.triangle.2.circlepath"
+        }
+    }
+
+    private var iconColor: Color {
+        switch job.stage {
+        case .complete: return .secondary
+        case .failed: return .red
+        default: return .orange
+        }
     }
 }
 
@@ -786,7 +870,7 @@ public struct SettingsView: View {
                 .width(min: 90, ideal: 110, max: 140)
                 TableColumn("Name") { speaker in
                     InlineEditableText(value: speaker.name) { newValue in
-                        model.speakerStore.rename(id: speaker.id, to: newValue)
+                        model.renameSpeaker(id: speaker.id, to: newValue)
                     }
                 }
                 TableColumn("Meetings") { speaker in

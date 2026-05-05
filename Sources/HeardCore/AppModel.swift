@@ -509,12 +509,61 @@ public var filteredSpeakers: [SpeakerProfile] {
         phase = queueStore.activeJob == nil ? .dormant : .processing
     }
 
+    public func renameSpeaker(id: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        
+        guard let oldProfile = speakerStore.speakers.first(where: { $0.id == id }) else { return }
+        let oldName = oldProfile.name
+        guard oldName != trimmed else { return }
+
+        speakerStore.rename(id: id, to: trimmed)
+
+        // Prompt the user before retroactively renaming
+        if askUserToUpdateTranscripts(oldName: oldName, newName: trimmed) {
+            let outputDir = URL(fileURLWithPath: settingsStore.settings.outputDirectory, isDirectory: true)
+            TranscriptWriter.renameSpeakerInDirectory(outputDir, from: oldName, to: trimmed)
+        }
+    }
+
     public func mergeSelectedSpeakers() {
         let ids = Array(mergeSelection)
         guard ids.count == 2 else { return }
+        
+        if let primary = speakerStore.speakers.first(where: { $0.id == ids[0] }),
+           let secondary = speakerStore.speakers.first(where: { $0.id == ids[1] }) {
+            
+            // Prompt the user before retroactively renaming
+            if askUserToUpdateTranscripts(oldName: secondary.name, newName: primary.name) {
+                let outputDir = URL(fileURLWithPath: settingsStore.settings.outputDirectory, isDirectory: true)
+                TranscriptWriter.renameSpeakerInDirectory(outputDir, from: secondary.name, to: primary.name)
+            }
+        }
+
         speakerStore.merge(primaryID: ids[0], secondaryID: ids[1])
         mergeSelection.removeAll()
     }
+
+    private func askUserToUpdateTranscripts(oldName: String, newName: String) -> Bool {
+        // If it's a generated placeholder, there's no need to ask, just do it.
+        // The user only needs to be asked if they are renaming an already explicitly named speaker.
+        if SpeakerMatcher.isPlaceholderName(oldName) {
+            return true
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "Update past transcripts?"
+        alert.informativeText = "Would you like to retroactively replace '\(oldName)' with '\(newName)' in all previously saved transcripts?"
+        alert.addButton(withTitle: "Update Transcripts")
+        alert.addButton(withTitle: "Skip")
+        alert.alertStyle = .informational
+        
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        return response == .alertFirstButtonReturn
+    }
+
+
 
     // MARK: - Speaker Naming Auto-Dismiss
 

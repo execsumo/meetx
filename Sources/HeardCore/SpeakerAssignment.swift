@@ -65,9 +65,9 @@ public enum SpeakerMatcher {
     /// excluded from matching so the user always gets another chance to name the
     /// speaker on a later meeting.
     public static func isPlaceholderName(_ name: String) -> Bool {
-        guard name.hasPrefix("Speaker ") else { return false }
-        let suffix = name.dropFirst("Speaker ".count)
-        return !suffix.isEmpty && suffix.allSatisfy(\.isWholeNumber)
+        guard name.hasPrefix("Speaker_") else { return false }
+        let suffix = name.dropFirst("Speaker_".count)
+        return suffix.count >= 4 // Basic validation that it has an ID part
     }
 
     public struct MatchResult {
@@ -87,12 +87,10 @@ public enum SpeakerMatcher {
     public static func matchSpeakers(
         embeddings: [SpeakerEmbedding],
         database: [SpeakerProfile],
-        localUserName: String,
-        startingSpeakerNumber: Int = 1
+        localUserName: String
     ) -> [MatchResult] {
         var results: [MatchResult] = []
         var usedProfileIDs = Set<UUID>()
-        var unnamedCounter = max(startingSpeakerNumber, 1)
 
         for detected in embeddings {
             // Mic-track speakers (M_ prefix) are always the local user
@@ -125,8 +123,8 @@ public enum SpeakerMatcher {
                     embedding: detected.vector
                 ))
             } else {
-                let name = "Speaker \(unnamedCounter)"
-                unnamedCounter += 1
+                let idSuffix = UUID().uuidString.prefix(6).uppercased()
+                let name = "Speaker_\(idSuffix)"
                 NSLog("Heard: matchSpeakers → '\(detected.speakerID)' has no confident match → '\(name)' (will trigger naming prompt)")
                 results.append(MatchResult(
                     detectedSpeakerID: detected.speakerID,

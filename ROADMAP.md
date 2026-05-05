@@ -37,8 +37,8 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 - **Preprocessing concurrency guard.** Both tracks are currently preprocessed concurrently in a `TaskGroup`. On machines with tight memory, this doubles the peak RAM during VAD. Expose a setting to serialize preprocessing.
 - **Progress in the UI.** The menu bar dropdown shows the current stage but no sub-stage progress. Emit sample-count-based progress from `AsrManager.transcribe` through an `AsyncStream`.
 - **Transcript preview in the dropdown.** Show the first ~100 chars of the most recent completed transcript so the user can verify the right meeting got captured.
-- **Open transcript in reveal mode.** Right-click → "Reveal in Finder" on each job row.
-- **Re-run speaker assignment.** If the user renames a speaker or merges two profiles, older transcripts don't retroactively update. Add a "Re-run speaker assignment" action on completed jobs that re-reads the cached `.wav` files (while they're still within the 48 h window).
+- ~~**Open transcript in reveal mode.**~~ Done — Right-click → "Reveal in Finder" on each job row in the new Recent Meetings dropdown.
+- ~~**Re-run speaker assignment.**~~ Done — Merging or renaming a speaker in Settings now prompts to retroactively replace the names across all old transcripts. Replaced monotonic `Speaker N` counter with unique UUID identifiers.
 - **Per-job log viewer.** When a job fails, the error string is short. Capture a rolling per-job log (stdout/NSLog lines) and show it in a disclosure view.
 - **Exclude silent clips from speaker naming.** When extracting audio clips for the speaker naming dialogue, filter out segments with silence/VAD gaps so each playback is continuous speech.
 - **Fix speaker naming dialogue auto-close.** The 120-second auto-dismiss is too aggressive when the user is actively filling out speaker names. Change behavior: close only if the window has been open and dormant (no text edits) for the full duration.
