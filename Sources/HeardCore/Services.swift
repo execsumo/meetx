@@ -1860,6 +1860,14 @@ public final class PipelineProcessor: ObservableObject {
         // never fails the job; original transcripts are kept on any error.
         await applyVocabularyBoosting()
 
+        // Apply Inverse Text Normalization (punctuation and number formatting)
+        if let result = appTranscription {
+            appTranscription = TextNormalizer.shared.normalize(result: result)
+        }
+        if let result = micTranscription {
+            micTranscription = TextNormalizer.shared.normalize(result: result)
+        }
+
         // Models stay cached for keep-alive; unloaded by clearJobState() or forceUnload()
     }
 

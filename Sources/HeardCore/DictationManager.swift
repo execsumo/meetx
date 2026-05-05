@@ -105,6 +105,11 @@ public final class DictationManager: ObservableObject {
             }
         }
 
+        // Add custom dictation rules for new lines and paragraphs
+        TextNormalizer.shared.addRule(spoken: "new line", written: "\n")
+        TextNormalizer.shared.addRule(spoken: "newline", written: "\n")
+        TextNormalizer.shared.addRule(spoken: "new paragraph", written: "\n\n")
+
         slidingWindowMgr = mgr
         injectedText = ""
         partialTranscript = ""
@@ -167,12 +172,15 @@ public final class DictationManager: ObservableObject {
         let confirmed = await mgr.confirmedTranscript
         let volatile = await mgr.volatileTranscript
 
-        // Update the display with the full running transcript.
-        partialTranscript = [confirmed, volatile].filter { !$0.isEmpty }.joined(separator: " ")
+        // Apply Inverse Text Normalization for the UI display
+        let normConfirmed = TextNormalizer.shared.normalizeSentence(confirmed)
+        let normVolatile = TextNormalizer.shared.normalizeSentence(volatile)
 
-        // Inject any newly confirmed text since the last injection.
-        // We do this on every update (not just isConfirmed) so text flows in real-time
-        // as the sliding window confirms words, rather than all appearing at stop().
+        // Update the display with the full running transcript.
+        partialTranscript = [normConfirmed, normVolatile].filter { !$0.isEmpty }.joined(separator: " ")
+
+        // Inject using the unnormalized transcript to preserve prefix monotonicity,
+        // then normalize the delta right before injecting.
         injectDelta(to: confirmed)
     }
 
@@ -193,7 +201,11 @@ public final class DictationManager: ObservableObject {
         let delta = stripFillers(raw).trimmingCharacters(in: .whitespaces)
         guard !delta.isEmpty else { return }
 
-        onUtterance?((needsLeadingSpace ? " " : "") + delta)
+        let normalizedDelta = TextNormalizer.shared.normalizeSentence(delta)
+        let noLeadingSpace = normalizedDelta.allSatisfy { $0.isPunctuation || $0.isNewline }
+        let prefixSpace = (needsLeadingSpace && !noLeadingSpace) ? " " : ""
+
+        onUtterance?(prefixSpace + normalizedDelta)
     }
 
     private func stripFillers(_ text: String) -> String {

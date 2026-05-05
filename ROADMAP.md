@@ -77,7 +77,7 @@ Features that fit the on-device, single-process philosophy but require more code
 ### Dictation
 - **Dictation transcript log.** Optional history of dictated text (with timestamps and target-app name) for recovery if injection drops characters.
 - **Per-app enable list.** Disable dictation in banking apps, password managers, or other sensitive fields.
-- **Punctuation normalization.** `"new line"`, `"comma"`, `"period"` — explicitly deferred in the spec but a natural v1.5 addition.
+- ~~**Punctuation normalization.**~~ Done - Dictation and batch transcripts now use FluidAudio's ITN to convert spoken forms like "comma" and "new line" to formatting.
 - **Vocab-scoped dictation.** Reuse the custom-vocab boosting (already wired into `SlidingWindowAsrManager`) in a "coding mode" with camelCase / snake_case post-processing.
 
 ### Preferences & UI
