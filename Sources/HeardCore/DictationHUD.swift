@@ -38,7 +38,7 @@ public final class DictationHUD {
         }
     }
 
-    private func animateAlpha(to target: CGFloat, duration: TimeInterval, completion: (() -> Void)? = nil) {
+    private func animateAlpha(to target: CGFloat, duration: TimeInterval, completion: (@Sendable () -> Void)? = nil) {
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = duration
             panel?.animator().alphaValue = target
