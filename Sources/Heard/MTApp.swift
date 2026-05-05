@@ -18,15 +18,26 @@ private struct MenuBarIcon: View {
     var body: some View {
         Image(nsImage: Self.templateImage)
             .renderingMode(.template)
-            .foregroundStyle(isActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+            .foregroundStyle(iconTint)
+            .opacity(iconOpacity)
             .overlay(alignment: .topTrailing) {
                 badge
             }
     }
 
-    /// Recording or dictating: tint to system accent.
-    private var isActive: Bool {
-        model.isDictating || model.phase == .recording
+    /// Accent when actively capturing audio; primary otherwise.
+    private var iconTint: AnyShapeStyle {
+        (model.isDictating || model.phase == .recording)
+            ? AnyShapeStyle(.tint)
+            : AnyShapeStyle(.primary)
+    }
+
+    /// Dimmed when the app is idle and watching is off (paused); full otherwise.
+    private var iconOpacity: Double {
+        let paused = model.phase == .dormant
+            && !model.isDictating
+            && !model.meetingDetector.isWatching
+        return paused ? 0.5 : 1.0
     }
 
     @ViewBuilder
