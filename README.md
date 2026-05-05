@@ -13,12 +13,13 @@ No cloud, no LLM, no external APIs — everything runs on-device on Apple Silico
 - **Roster scraping** — Reads Teams participant names via Accessibility APIs every 15 s while a meeting is active. Three strategies: known roster-panel identifiers → AXList/AXTable containers → window-title parsing. Filters out UI control strings (mute, raise hand, etc.).
 - **On-device pipeline** — Sequential stages per job: preprocessing (48 kHz → 16 kHz mono via `AVAudioConverter`, in-memory Silero VAD trimming + `VadSegmentMap`) → Parakeet TDT V2/V3 transcription (per-track, parallel 4-chunk processing, with CTC vocabulary boosting) → LS-EEND + WeSpeaker diarization → speaker assignment and Markdown output.
 - **Speaker identification** — Cosine-distance matching (threshold 0.40, confidence margin 0.10) against a persistent speaker database, with embedding diversity management and auto-update on confident matches. Uses UUID-based placeholders (e.g. `Speaker_1AB23C`) to guarantee universally unique speaker profiles.
+- **Cumulative transcription stats** — Every transcribed segment seamlessly increments the matched speaker's total transcribed hours and word count, which are visible in the Settings tab.
 - **Roster-aware auto-naming** — When one speaker is unmatched and exactly one roster name is unclaimed, the roster name is assigned automatically without prompting.
 - **Speaker naming window** — When unmatched speakers remain, a dedicated "Name Speakers" window opens with a **playable audio clip** (~10 s of each speaker's clearest speech, extracted from the 48 kHz recording), a text field pre-populated with any roster suggestion, and a 120 s auto-dismiss countdown.
 - **Custom vocabulary boosting** — CTC-based keyword boosting via `Parakeet CTC 110M` applied to both meeting transcription and dictation. Terms are added from Settings → General (min 3 chars, max 50 terms). Falls back gracefully if the CTC model can't be loaded.
 - **Persistent job queue** — `pipeline_queue.json` survives app restarts; failed jobs are re-queued on relaunch up to a lifetime cap of 6 retries. Non-retryable errors (no audio, too short) fail immediately; transient errors retry 3× per session with exponential backoff (5 s, 30 s, 5 min). User-initiated retry resets the count.
 - **Long-meeting handling** — 4 h hard cap; on hit, the current recording is finalized and a fresh one starts if the meeting is still active.
-- **Markdown output** — Timestamped, speaker-labeled transcripts written to a configurable output folder. Consecutive segments from the same speaker are merged into continuous blocks.
+- **Markdown output** — Timestamped, speaker-labeled transcripts written to a configurable output folder. Filename dates are configurable (`YYMMDD` or `YYYY-MM-DD`). Consecutive segments from the same speaker are merged into continuous blocks.
 
 ### Dictation
 - **Real-time speech-to-text** — Uses FluidAudio's `SlidingWindowAsrManager` with overlapping windows and an internal stable/volatile text split. Audio is fed as `AVAudioPCMBuffer` straight from the mic tap; the manager handles resampling, chunking, and context accumulation internally.
@@ -167,7 +168,7 @@ Only Microphone is strictly required; everything else degrades gracefully. Permi
 └── parakeet-tdt-0.6b-v2-ctc-110m-coreml/
 
 ~/Documents/Heard/        # Default transcript output (configurable)
-└── 260324_Sprint_Planning.md
+└── 260324_Sprint_Planning.md # Or 2026-03-24_Sprint_Planning.md based on settings
 ```
 
 Orphan WAVs from previous crashes are cleaned on launch, and any private aggregate devices left behind by a crashed recording (`com.execsumo.heard.tap.*`) are destroyed at the same time. Files referenced by an in-flight pipeline job are always preserved.
