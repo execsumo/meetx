@@ -33,14 +33,18 @@ public struct RecordingSession {
     public let micAudioPath: URL
     public var micDelaySeconds: TimeInterval
     public var rosterNames: [String]
+    /// In-flight notes captured during the meeting via the note-composer hotkey.
+    /// Carried into the `PipelineJob` when the session ends.
+    public var notes: [MeetingNote]
 
-    public init(title: String, startTime: Date, appAudioPath: URL, micAudioPath: URL, micDelaySeconds: TimeInterval, rosterNames: [String] = []) {
+    public init(title: String, startTime: Date, appAudioPath: URL, micAudioPath: URL, micDelaySeconds: TimeInterval, rosterNames: [String] = [], notes: [MeetingNote] = []) {
         self.title = title
         self.startTime = startTime
         self.appAudioPath = appAudioPath
         self.micAudioPath = micAudioPath
         self.micDelaySeconds = micDelaySeconds
         self.rosterNames = rosterNames
+        self.notes = notes
     }
 }
 
@@ -443,6 +447,21 @@ public final class RecordingManager: ObservableObject {
         guard activeSession != nil, !names.isEmpty else { return }
         activeSession?.rosterNames = names
         currentRosterNames = names
+    }
+
+    /// Append a user-authored note to the active recording session. The offset
+    /// is measured from `session.startTime` using the wall-clock instant at
+    /// which the composer was *opened* (passed in by the caller), not the
+    /// submit instant — so a note typed slowly still anchors to when the user
+    /// reacted to what was being said. Returns false if no session is active.
+    @discardableResult
+    public func addNote(at openedAt: Date, text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        guard let session = activeSession else { return false }
+        let offset = max(0, openedAt.timeIntervalSince(session.startTime))
+        activeSession?.notes.append(MeetingNote(offsetSeconds: offset, text: trimmed))
+        return true
     }
 
     public func stopRecording() -> RecordingSession? {
@@ -1449,12 +1468,62 @@ public enum TranscriptWriter {
 
         """
 
-        let body = document.segments.map { segment in
-            "[\(segment.startTime.timestampString)] **\(segment.speaker):** \(segment.text)"
-        }.joined(separator: "\n\n")
+        let body = renderBody(segments: document.segments, notes: document.notes, noteAuthor: document.noteAuthor)
 
         try (header + body + "\n").write(to: candidate, atomically: true, encoding: .utf8)
         return candidate
+    }
+
+    /// Merge spoken segments and user-authored notes into a single chronological
+    /// markdown body. Notes are rendered in italics with a `**Note from <Name>:**`
+    /// label so they're visually distinct from spoken speaker blocks. Notes use
+    /// their `offsetSeconds` as the timestamp; for sort stability when a note
+    /// shares a timestamp with a segment, the note appears immediately after.
+    public static func renderBody(
+        segments: [TranscriptSegment],
+        notes: [MeetingNote],
+        noteAuthor: String
+    ) -> String {
+        let author = noteAuthor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Me"
+            : noteAuthor.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        enum Item {
+            case segment(TranscriptSegment)
+            case note(MeetingNote)
+            var time: TimeInterval {
+                switch self {
+                case .segment(let s): return s.startTime
+                case .note(let n): return n.offsetSeconds
+                }
+            }
+            // 0 for segments, 1 for notes — keeps notes after a segment that
+            // starts at the same instant rather than splitting the speaker block
+            // by a hair.
+            var sortKind: Int {
+                switch self {
+                case .segment: return 0
+                case .note: return 1
+                }
+            }
+        }
+
+        var items: [Item] = segments.map { .segment($0) } + notes.map { .note($0) }
+        items.sort { lhs, rhs in
+            if lhs.time != rhs.time { return lhs.time < rhs.time }
+            return lhs.sortKind < rhs.sortKind
+        }
+
+        return items.map { item -> String in
+            switch item {
+            case .segment(let s):
+                return "[\(s.startTime.timestampString)] **\(s.speaker):** \(s.text)"
+            case .note(let n):
+                let body = n.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                let timestamp = max(0, n.offsetSeconds).timestampString
+                return "[\(timestamp)] _**Note from \(author):** \(body)_"
+            }
+        }.joined(separator: "\n\n")
     }
 }
 
@@ -1526,10 +1595,35 @@ public final class PipelineProcessor: ObservableObject {
             stageStartTime: nil,
             error: nil,
             retryCount: 0,
-            rosterNames: session.rosterNames
+            rosterNames: session.rosterNames,
+            notes: session.notes,
+            micDelaySeconds: session.micDelaySeconds
         )
         queueStore.enqueue(job)
         runNextIfNeeded()
+    }
+
+    /// Attach a late-arriving meeting note to whichever queued job spans the
+    /// given wall-clock instant. Used when the composer panel was opened during
+    /// recording but the user submitted after the meeting had already ended —
+    /// the note still belongs in that meeting's transcript. No-op if no
+    /// matching job exists, or if the matching job has already passed Stage 5.
+    @discardableResult
+    public func attachNoteToFinishedJob(at openedAt: Date, text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        // Match the most recent job whose recording window contains openedAt
+        // and which hasn't been written out yet.
+        let candidate = queueStore.jobs
+            .filter { $0.startTime <= openedAt && openedAt <= $0.endTime }
+            .filter { $0.stage != .complete && $0.stage != .failed }
+            .sorted { $0.startTime > $1.startTime }
+            .first
+        guard var job = candidate else { return false }
+        let offset = max(0, openedAt.timeIntervalSince(job.startTime))
+        job.notes.append(MeetingNote(offsetSeconds: offset, text: trimmed))
+        queueStore.update(job)
+        return true
     }
 
     public func retryFailedJob(_ job: PipelineJob) {
@@ -1995,33 +2089,47 @@ public final class PipelineProcessor: ObservableObject {
         let me = settingsStore.settings.userName.isEmpty ? "Me" : settingsStore.settings.userName
 
         // Build transcription segments from ASR results with timestamp remapping
-        var allSegments: [TranscriptSegment] = []
+        var appSegments: [TranscriptSegment] = []
+        var micSegments: [TranscriptSegment] = []
 
         // App track segments (remote participants)
         if let asr = appTranscription, let track = appTrack, let timings = asr.tokenTimings {
-            let segments = buildSegmentsFromTimings(timings, vadMap: track.vadMap, defaultSpeaker: "Remote")
-            allSegments.append(contentsOf: segments)
+            appSegments = buildSegmentsFromTimings(timings, vadMap: track.vadMap, defaultSpeaker: "Remote")
         } else if let asr = appTranscription, let track = appTrack, !asr.text.isEmpty {
-            allSegments.append(TranscriptSegment(
+            appSegments = [TranscriptSegment(
                 speaker: "Remote",
                 startTime: 0,
                 endTime: track.duration,
                 text: asr.text
-            ))
+            )]
         }
 
         // Mic track segments (local user)
         if let asr = micTranscription, let track = micTrack, let timings = asr.tokenTimings {
-            let segments = buildSegmentsFromTimings(timings, vadMap: track.vadMap, defaultSpeaker: me)
-            allSegments.append(contentsOf: segments)
+            micSegments = buildSegmentsFromTimings(timings, vadMap: track.vadMap, defaultSpeaker: me)
         } else if let asr = micTranscription, let track = micTrack, !asr.text.isEmpty {
-            allSegments.append(TranscriptSegment(
+            micSegments = [TranscriptSegment(
                 speaker: me,
                 startTime: 0,
                 endTime: track.duration,
                 text: asr.text
-            ))
+            )]
         }
+
+        // Drop mic segments that duplicate app segments via speaker bleed
+        // (e.g. user is on laptop speakers and the mic picks up remote audio).
+        let micBefore = micSegments.count
+        micSegments = SegmentDeduplicator.dropMicBleed(
+            appSegments: appSegments,
+            micSegments: micSegments,
+            micDelaySeconds: job.micDelaySeconds
+        )
+        let dropped = micBefore - micSegments.count
+        if dropped > 0 {
+            NSLog("Heard: dedup dropped \(dropped) mic segment(s) of \(micBefore) as bleed")
+        }
+
+        var allSegments: [TranscriptSegment] = appSegments + micSegments
 
         // Apply diarization speaker labels
         var unmatchedSpeakerInfo: [(speakerID: String, temporaryName: String, embedding: [Float], duration: TimeInterval, words: Int)] = []
@@ -2168,6 +2276,7 @@ public final class PipelineProcessor: ObservableObject {
             unmatchedSpeakerInfo[i].words = wordsPerSpeaker[name] ?? 0
         }
 
+        let userName = settingsStore.settings.userName.trimmingCharacters(in: .whitespacesAndNewlines)
         return TranscriptDocument(
             title: job.meetingTitle.isEmpty ? "Meeting" : job.meetingTitle,
             startTime: job.startTime,
@@ -2176,7 +2285,9 @@ public final class PipelineProcessor: ObservableObject {
             segments: finalSegments,
             unmatchedSpeakers: unmatchedSpeakerInfo,
             diarizationSegments: diarSegTuples,
-            unmatchedRosterNames: unmatchedRosterNamesForPrompt
+            unmatchedRosterNames: unmatchedRosterNamesForPrompt,
+            notes: job.notes,
+            noteAuthor: userName.isEmpty ? "Me" : userName
         )
     }
     private func buildSegmentsFromTimings(

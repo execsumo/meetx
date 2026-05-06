@@ -465,6 +465,7 @@ public struct SettingsView: View {
     @ObservedObject public var model: AppModel
     @ObservedObject private var permissionCenter: PermissionCenter
     @State private var isRecordingHotkey = false
+    @State private var isRecordingNoteHotkey = false
     @State private var commandSpokenDraft = ""
     @State private var commandWrittenDraft = ""
     @StateObject private var clipPlayer = SpeakerClipController()
@@ -506,6 +507,15 @@ public struct SettingsView: View {
                     isRecordingHotkey = false
                 },
                 onCancel: { isRecordingHotkey = false }
+            )
+        }
+        .sheet(isPresented: $isRecordingNoteHotkey) {
+            HotkeyRecorderView(
+                onCommit: { combo in
+                    model.updateMeetingNoteHotkey(combo)
+                    isRecordingNoteHotkey = false
+                },
+                onCancel: { isRecordingNoteHotkey = false }
             )
         }
     }
@@ -581,6 +591,27 @@ public struct SettingsView: View {
                         Text(format.displayName).tag(format)
                     }
                 }
+            }
+
+            Section {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("In-Meeting Note Hotkey")
+                        Text("Press during a meeting to type a note that's inserted into the transcript at that moment, marked as supplemental.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Text(model.settingsStore.settings.meetingNoteHotkey.displayString)
+                        .font(.system(.callout, design: .monospaced).weight(.medium))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
+                    Button("Record…") { isRecordingNoteHotkey = true }
+                }
+            } header: {
+                Text("Meeting Notes")
             }
 
             Section("Permissions") {

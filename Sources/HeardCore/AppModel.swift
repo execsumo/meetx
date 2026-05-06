@@ -36,6 +36,7 @@ public final class AppModel: ObservableObject {
     public var meetingDetector: MeetingDetector! = nil
     public let dictationManager: DictationManager
     public var hotkeyManager: HotkeyManager! = nil
+    public var meetingNoteHotkeyManager: HotkeyManager! = nil
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -107,6 +108,9 @@ public final class AppModel: ObservableObject {
         if settingsStore.settings.dictationEnabled {
             model.setupHotkeyManager()
         }
+
+        // Note hotkey is always active — checks recording state when fired
+        model.setupMeetingNoteHotkey()
 
         return model
     }
@@ -300,6 +304,60 @@ public var filteredSpeakers: [SpeakerProfile] {
         hotkeyManager?.updateHotkey(hotkey)
     }
 
+    // MARK: - In-Meeting Notes
+
+    public func updateMeetingNoteHotkey(_ hotkey: HotkeyCombo) {
+        settingsStore.settings.meetingNoteHotkey = hotkey
+        meetingNoteHotkeyManager?.updateHotkey(hotkey)
+    }
+
+    private func setupMeetingNoteHotkey() {
+        meetingNoteHotkeyManager = HotkeyManager(
+            id: 2,
+            hotkey: settingsStore.settings.meetingNoteHotkey,
+            onPressed: { [weak self] in self?.presentMeetingNoteComposer() }
+        )
+        meetingNoteHotkeyManager.activate()
+    }
+
+    /// Open the in-meeting note composer. No-op (with a brief HUD blip) when
+    /// no recording is active — the feature is meaningless outside a meeting.
+    public func presentMeetingNoteComposer() {
+        guard let session = recordingManager.activeSession else {
+            flashNoActiveMeetingHUD()
+            return
+        }
+        MeetingNoteComposer.shared.present(
+            meetingTitle: session.title,
+            recordingStart: session.startTime,
+            onSubmit: { [weak self] openedAt, text in
+                self?.commitMeetingNote(openedAt: openedAt, text: text)
+            }
+        )
+    }
+
+    private func commitMeetingNote(openedAt: Date, text: String) {
+        // Common path: still recording — append directly to the active session
+        // and the note rides into the PipelineJob when recording stops.
+        if recordingManager.activeSession != nil {
+            recordingManager.addNote(at: openedAt, text: text)
+            return
+        }
+        // Fallback: composer was open when the meeting ended. Find the
+        // matching just-enqueued job and attach there instead.
+        let attached = pipelineProcessor.attachNoteToFinishedJob(at: openedAt, text: text)
+        if !attached {
+            NSLog("Heard: Discarded meeting note — no active session and no matching job found.")
+        }
+    }
+
+    private func flashNoActiveMeetingHUD() {
+        // Lightweight, non-blocking signal. A standalone HUD class would be
+        // overkill for an edge case — a brief NSSound + log is enough.
+        NSSound.beep()
+        NSLog("Heard: Meeting-note hotkey ignored — no active recording.")
+    }
+
     public func setTranscriptionModel(_ version: TranscriptionModel) {
         settingsStore.settings.transcriptionModel = version
         // Propagate to managers so the next start/download uses the right version
@@ -312,6 +370,7 @@ public var filteredSpeakers: [SpeakerProfile] {
     private func setupHotkeyManager() {
         let pushToTalk = settingsStore.settings.pushToTalk
         hotkeyManager = HotkeyManager(
+            id: 1,
             hotkey: settingsStore.settings.dictationHotkey,
             onPressed: { [weak self] in
                 guard let self else { return }

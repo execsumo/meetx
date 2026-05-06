@@ -31,6 +31,26 @@ public enum PipelineStage: String, Codable, CaseIterable, Identifiable {
     public var displayName: String { rawValue.capitalized }
 }
 
+/// A user-authored note typed during a meeting via the in-meeting note hotkey.
+/// Inserted chronologically into the final transcript and rendered as supplemental
+/// info attributed to the local user, distinct from spoken segments.
+public struct MeetingNote: Codable, Identifiable, Equatable {
+    public let id: UUID
+    /// Offset in seconds from the recording's `startTime`. Anchored at the moment
+    /// the user invoked the composer (not when they submitted), so a slow typer's
+    /// note still lands at the right point in the conversation.
+    public let offsetSeconds: TimeInterval
+    public let text: String
+    public let createdAt: Date
+
+    public init(id: UUID = UUID(), offsetSeconds: TimeInterval, text: String, createdAt: Date = Date()) {
+        self.id = id
+        self.offsetSeconds = offsetSeconds
+        self.text = text
+        self.createdAt = createdAt
+    }
+}
+
 public struct PipelineJob: Codable, Identifiable, Equatable {
     public let id: UUID
     public var meetingTitle: String
@@ -44,6 +64,12 @@ public struct PipelineJob: Codable, Identifiable, Equatable {
     public var error: String?
     public var retryCount: Int
     public var rosterNames: [String]
+    public var notes: [MeetingNote]
+    /// `mic.start − app.start` in seconds. Used during speaker assignment to
+    /// align mic-track segments with app-track segments for cross-track
+    /// deduplication. Defaults to 0 for jobs persisted before this field
+    /// existed.
+    public var micDelaySeconds: TimeInterval
 
     public init(
         id: UUID,
@@ -57,7 +83,9 @@ public struct PipelineJob: Codable, Identifiable, Equatable {
         stageStartTime: Date?,
         error: String?,
         retryCount: Int,
-        rosterNames: [String] = []
+        rosterNames: [String] = [],
+        notes: [MeetingNote] = [],
+        micDelaySeconds: TimeInterval = 0
     ) {
         self.id = id
         self.meetingTitle = meetingTitle
@@ -71,6 +99,32 @@ public struct PipelineJob: Codable, Identifiable, Equatable {
         self.error = error
         self.retryCount = retryCount
         self.rosterNames = rosterNames
+        self.notes = notes
+        self.micDelaySeconds = micDelaySeconds
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, meetingTitle, startTime, endTime, appAudioPath, micAudioPath
+        case transcriptPath, stage, stageStartTime, error, retryCount
+        case rosterNames, notes, micDelaySeconds
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        meetingTitle = try c.decode(String.self, forKey: .meetingTitle)
+        startTime = try c.decode(Date.self, forKey: .startTime)
+        endTime = try c.decode(Date.self, forKey: .endTime)
+        appAudioPath = try c.decode(URL.self, forKey: .appAudioPath)
+        micAudioPath = try c.decode(URL.self, forKey: .micAudioPath)
+        transcriptPath = try c.decodeIfPresent(URL.self, forKey: .transcriptPath)
+        stage = try c.decode(PipelineStage.self, forKey: .stage)
+        stageStartTime = try c.decodeIfPresent(Date.self, forKey: .stageStartTime)
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+        retryCount = try c.decode(Int.self, forKey: .retryCount)
+        rosterNames = try c.decodeIfPresent([String].self, forKey: .rosterNames) ?? []
+        notes = try c.decodeIfPresent([MeetingNote].self, forKey: .notes) ?? []
+        micDelaySeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .micDelaySeconds) ?? 0
     }
 }
 
@@ -277,6 +331,8 @@ public struct AppSettings: Codable, Equatable {
     public var showDictationHUD: Bool
     /// Date format used for the transcript filename.
     public var transcriptDateFormat: TranscriptDateFormat
+    /// Hotkey to open the in-meeting note composer. Active only while a meeting is recording.
+    public var meetingNoteHotkey: HotkeyCombo
 
     public static let `default` = AppSettings(
         userName: "",
@@ -297,7 +353,8 @@ public struct AppSettings: Codable, Equatable {
         pipelineKeepAlive: 0,
         transcriptionModel: .v2,
         showDictationHUD: false,
-        transcriptDateFormat: .short
+        transcriptDateFormat: .short,
+        meetingNoteHotkey: .meetingNoteDefault
     )
 
     public init(
@@ -315,7 +372,8 @@ public struct AppSettings: Codable, Equatable {
         pipelineKeepAlive: TimeInterval = 0,
         transcriptionModel: TranscriptionModel = .v2,
         showDictationHUD: Bool = false,
-        transcriptDateFormat: TranscriptDateFormat = .short
+        transcriptDateFormat: TranscriptDateFormat = .short,
+        meetingNoteHotkey: HotkeyCombo = .meetingNoteDefault
     ) {
         self.userName = userName
         self.launchAtLogin = launchAtLogin
@@ -332,6 +390,7 @@ public struct AppSettings: Codable, Equatable {
         self.transcriptionModel = transcriptionModel
         self.showDictationHUD = showDictationHUD
         self.transcriptDateFormat = transcriptDateFormat
+        self.meetingNoteHotkey = meetingNoteHotkey
     }
 }
 
@@ -421,6 +480,11 @@ public struct TranscriptDocument {
     public var diarizationSegments: [(speakerID: String, startTime: TimeInterval, endTime: TimeInterval)]
     /// Roster names not matched to known speakers (potential suggested names).
     public var unmatchedRosterNames: [String]
+    /// User-authored notes captured via the in-meeting note hotkey. Rendered
+    /// chronologically alongside speaker segments in the markdown output.
+    public var notes: [MeetingNote]
+    /// Display name to attribute notes to. Falls back to "Me" when empty.
+    public var noteAuthor: String
 
     public init(
         title: String,
@@ -430,7 +494,9 @@ public struct TranscriptDocument {
         segments: [TranscriptSegment],
         unmatchedSpeakers: [(speakerID: String, temporaryName: String, embedding: [Float], duration: TimeInterval, words: Int)] = [],
         diarizationSegments: [(speakerID: String, startTime: TimeInterval, endTime: TimeInterval)] = [],
-        unmatchedRosterNames: [String] = []
+        unmatchedRosterNames: [String] = [],
+        notes: [MeetingNote] = [],
+        noteAuthor: String = "Me"
     ) {
         self.title = title
         self.startTime = startTime
@@ -440,6 +506,8 @@ public struct TranscriptDocument {
         self.unmatchedSpeakers = unmatchedSpeakers
         self.diarizationSegments = diarizationSegments
         self.unmatchedRosterNames = unmatchedRosterNames
+        self.notes = notes
+        self.noteAuthor = noteAuthor
     }
 }
 

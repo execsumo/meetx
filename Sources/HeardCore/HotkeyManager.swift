@@ -22,6 +22,12 @@ public struct HotkeyCombo: Codable, Equatable {
         modifiers: [.control, .shift]
     )
 
+    /// Default for the in-meeting note composer hotkey: Ctrl+Shift+N
+    public static let meetingNoteDefault = HotkeyCombo(
+        keyCode: 45, // 'N' key
+        modifiers: [.control, .shift]
+    )
+
     /// Convert NSEvent modifier flags to Carbon modifier flags.
     var carbonModifiers: UInt32 {
         var carbonFlags: UInt32 = 0
@@ -71,11 +77,19 @@ public struct HotkeyCombo: Codable, Equatable {
 
 // MARK: - Carbon Hot Key Manager
 
-/// Singleton storage for the Carbon event handler callback.
-/// Carbon uses a C function pointer callback, so we need a global to bridge back to Swift.
-private var hotkeyManagerInstance: HotkeyManager?
+/// Registry of active HotkeyManager instances keyed by their Carbon hotkey id.
+/// Carbon uses a C function pointer callback, so a global registry is required to
+/// bridge back into Swift. The registry lets multiple HotkeyManagers coexist —
+/// each owns a distinct id (1 = dictation, 2 = meeting notes, …) and the
+/// callback dispatches by inspecting the event's `EventHotKeyID`.
+private var hotkeyManagerRegistry: [UInt32: HotkeyManager] = [:]
+/// Single shared event handler installed on the application target. We install
+/// it once and route all hotkey IDs through it; removing/reinstalling per-manager
+/// would race when multiple managers are activated.
+private var sharedHotkeyEventHandlerRef: EventHandlerRef?
 
-/// Carbon event handler callback — dispatches to the HotkeyManager singleton.
+/// Carbon event handler callback — dispatches to the HotkeyManager whose id
+/// matches the event's `EventHotKeyID`.
 private func carbonHotkeyHandler(
     nextHandler: EventHandlerCallRef?,
     event: EventRef?,
@@ -83,14 +97,61 @@ private func carbonHotkeyHandler(
 ) -> OSStatus {
     guard let event else { return OSStatus(eventNotHandledErr) }
     let eventKind = Int(GetEventKind(event))
+
+    var hotkeyID = EventHotKeyID()
+    let status = GetEventParameter(
+        event,
+        EventParamName(kEventParamDirectObject),
+        EventParamType(typeEventHotKeyID),
+        nil,
+        MemoryLayout<EventHotKeyID>.size,
+        nil,
+        &hotkeyID
+    )
+    guard status == noErr else { return OSStatus(eventNotHandledErr) }
+
+    let id = hotkeyID.id
     DispatchQueue.main.async {
+        guard let manager = hotkeyManagerRegistry[id] else { return }
         if eventKind == kEventHotKeyPressed {
-            hotkeyManagerInstance?.handleHotkeyPressed()
+            manager.handleHotkeyPressed()
         } else if eventKind == kEventHotKeyReleased {
-            hotkeyManagerInstance?.handleHotkeyReleased()
+            manager.handleHotkeyReleased()
         }
     }
     return noErr
+}
+
+/// Install the shared Carbon event handler on first use. Idempotent.
+private func ensureSharedHotkeyEventHandler() -> Bool {
+    if sharedHotkeyEventHandlerRef != nil { return true }
+
+    var eventTypes = [
+        EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        ),
+        EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyReleased)
+        ),
+    ]
+
+    let status = InstallEventHandler(
+        GetApplicationEventTarget(),
+        carbonHotkeyHandler,
+        2,
+        &eventTypes,
+        nil,
+        &sharedHotkeyEventHandlerRef
+    )
+
+    if status != noErr {
+        NSLog("Heard: Failed to install Carbon event handler: \(status)")
+        sharedHotkeyEventHandlerRef = nil
+        return false
+    }
+    return true
 }
 
 /// Registers a global keyboard shortcut using Carbon's RegisterEventHotKey.
@@ -100,17 +161,23 @@ private func carbonHotkeyHandler(
 public final class HotkeyManager {
 
     private var hotkeyRef: EventHotKeyRef?
-    private var eventHandlerRef: EventHandlerRef?
     private var hotkey: HotkeyCombo
+    private let id: UInt32
     private var onPressed: (() -> Void)?
     private var onReleased: (() -> Void)?
 
-    private static let hotkeyID = EventHotKeyID(
-        signature: OSType(0x48524430),  // "HRD0"
-        id: 1
-    )
+    private static let signature = OSType(0x48524430)  // "HRD0"
 
-    public init(hotkey: HotkeyCombo = .default, onPressed: (() -> Void)? = nil, onReleased: (() -> Void)? = nil) {
+    /// `id` must be unique across all live HotkeyManagers — it identifies the
+    /// hotkey in the Carbon registry and routes callbacks. 1 is reserved for
+    /// dictation, 2 for the in-meeting note composer.
+    public init(
+        id: UInt32 = 1,
+        hotkey: HotkeyCombo = .default,
+        onPressed: (() -> Void)? = nil,
+        onReleased: (() -> Void)? = nil
+    ) {
+        self.id = id
         self.hotkey = hotkey
         self.onPressed = onPressed
         self.onReleased = onReleased
@@ -130,38 +197,11 @@ public final class HotkeyManager {
 
     public func activate() {
         guard hotkeyRef == nil else { return }
+        guard ensureSharedHotkeyEventHandler() else { return }
 
-        // Store singleton reference for C callback
-        hotkeyManagerInstance = self
+        hotkeyManagerRegistry[id] = self
 
-        // Install Carbon event handler for both pressed and released events
-        var eventTypes = [
-            EventTypeSpec(
-                eventClass: OSType(kEventClassKeyboard),
-                eventKind: UInt32(kEventHotKeyPressed)
-            ),
-            EventTypeSpec(
-                eventClass: OSType(kEventClassKeyboard),
-                eventKind: UInt32(kEventHotKeyReleased)
-            ),
-        ]
-
-        let status = InstallEventHandler(
-            GetApplicationEventTarget(),
-            carbonHotkeyHandler,
-            2,
-            &eventTypes,
-            nil,
-            &eventHandlerRef
-        )
-
-        guard status == noErr else {
-            NSLog("Heard: Failed to install Carbon event handler: \(status)")
-            return
-        }
-
-        // Register the hotkey
-        var hotkeyID = Self.hotkeyID
+        let hotkeyID = EventHotKeyID(signature: Self.signature, id: id)
         let regStatus = RegisterEventHotKey(
             UInt32(hotkey.keyCode),
             hotkey.carbonModifiers,
@@ -172,7 +212,7 @@ public final class HotkeyManager {
         )
 
         if regStatus != noErr {
-            NSLog("Heard: Failed to register hotkey: \(regStatus)")
+            NSLog("Heard: Failed to register hotkey id=\(id): \(regStatus)")
             deactivate()
         }
     }
@@ -182,12 +222,8 @@ public final class HotkeyManager {
             UnregisterEventHotKey(ref)
             hotkeyRef = nil
         }
-        if let handler = eventHandlerRef {
-            RemoveEventHandler(handler)
-            eventHandlerRef = nil
-        }
-        if hotkeyManagerInstance === self {
-            hotkeyManagerInstance = nil
+        if hotkeyManagerRegistry[id] === self {
+            hotkeyManagerRegistry.removeValue(forKey: id)
         }
     }
 
@@ -201,7 +237,9 @@ public final class HotkeyManager {
 
     deinit {
         if let ref = hotkeyRef { UnregisterEventHotKey(ref) }
-        if let handler = eventHandlerRef { RemoveEventHandler(handler) }
-        if hotkeyManagerInstance === self { hotkeyManagerInstance = nil }
+        // Registry is @MainActor-isolated and only mutated from the main
+        // thread. deinit is the rare case — the manager owning a slot has
+        // already been deactivated in normal flow, so we don't touch the
+        // registry from a non-isolated context here.
     }
 }

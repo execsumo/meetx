@@ -127,6 +127,12 @@ public final class SettingsStore: ObservableObject {
             hotkey = decoded
         }
 
+        var meetingNoteHotkey = base.meetingNoteHotkey
+        if let data = defaults.data(forKey: "meetingNoteHotkey"),
+           let decoded = try? JSONDecoder().decode(HotkeyCombo.self, from: data) {
+            meetingNoteHotkey = decoded
+        }
+
         var formattingCommands = base.formattingCommands
         if let commandsData = defaults.data(forKey: "formattingCommands"),
            let decoded = try? JSONDecoder().decode([FormattingCommand].self, from: commandsData) {
@@ -149,7 +155,8 @@ public final class SettingsStore: ObservableObject {
             developerMode: defaults.object(forKey: "developerMode") as? Bool ?? base.developerMode,
             dictationEnabled: defaults.object(forKey: "dictationEnabled") as? Bool ?? base.dictationEnabled,
             dictationHotkey: hotkey,
-            transcriptDateFormat: transcriptDateFormat
+            transcriptDateFormat: transcriptDateFormat,
+            meetingNoteHotkey: meetingNoteHotkey
         )
     }
 
@@ -167,6 +174,9 @@ public final class SettingsStore: ObservableObject {
         defaults.set(settings.transcriptDateFormat.rawValue, forKey: "transcriptDateFormat")
         if let hotkeyData = try? JSONEncoder().encode(settings.dictationHotkey) {
             defaults.set(hotkeyData, forKey: "dictationHotkey")
+        }
+        if let data = try? JSONEncoder().encode(settings.meetingNoteHotkey) {
+            defaults.set(data, forKey: "meetingNoteHotkey")
         }
     }
 }

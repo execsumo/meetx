@@ -20,6 +20,7 @@ No cloud, no LLM, no external APIs — everything runs on-device on Apple Silico
 - **Persistent job queue** — `pipeline_queue.json` survives app restarts; failed jobs are re-queued on relaunch up to a lifetime cap of 6 retries. Non-retryable errors (no audio, too short) fail immediately; transient errors retry 3× per session with exponential backoff (5 s, 30 s, 5 min). User-initiated retry resets the count.
 - **Long-meeting handling** — 4 h hard cap; on hit, the current recording is finalized and a fresh one starts if the meeting is still active.
 - **Markdown output** — Timestamped, speaker-labeled transcripts written to a configurable output folder. Filename dates are configurable (`YYMMDD` or `YYYY-MM-DD`). Consecutive segments from the same speaker are merged into continuous blocks.
+- **In-meeting notes** — Press a global hotkey during an active recording (default ⌃⇧N, configurable in Settings → General) to open a floating composer panel. Type a note, ⌘↩ to save, Esc to cancel. The note's timestamp is captured at panel-open time, so a slow typer's note still anchors to the moment they reacted. Notes are interleaved chronologically with spoken segments and rendered as `[mm:ss] _**Note from <Your Name>:** …_` (italicized, distinct from speaker blocks) so a reader can tell what was said versus what was added as supplemental context. Survives crashes via `pipeline_queue.json`; if the meeting ends while the composer is still open, the note is attached to the just-finished job.
 
 ### Dictation
 - **Real-time speech-to-text** — Uses FluidAudio's `SlidingWindowAsrManager` with overlapping windows and an internal stable/volatile text split. Audio is fed as `AVAudioPCMBuffer` straight from the mic tap; the manager handles resampling, chunking, and context accumulation internally.
@@ -97,7 +98,8 @@ Heard/
 │       ├── ModelDownloadManager.swift # Pre-download & status for FluidAudio models
 │       ├── DictationManager.swift    # SlidingWindowAsrManager wrapper + incremental injection
 │       ├── TextInjector.swift        # CGEvent unicode / HID / clipboard paths
-│       ├── HotkeyManager.swift       # Carbon RegisterEventHotKey wrapper
+│       ├── HotkeyManager.swift       # Carbon RegisterEventHotKey wrapper (multi-hotkey registry)
+│       ├── MeetingNoteComposer.swift # Floating panel for in-meeting notes
 │       └── RosterReader.swift        # Teams roster via AXUIElement
 ├── Tests/HeardTests/
 │   └── TestRunner.swift              # Lightweight harness — no XCTest / no Xcode
@@ -127,7 +129,7 @@ Heard/
 - **AUHAL + private aggregate device for the tap.** `AVAudioEngine.inputNode` silently re-binds to the system default input when `prepare()` runs after a `kAudioOutputUnitProperty_CurrentDevice` change, so a standalone `kAudioUnitSubType_HALOutput` configured *before* `AudioUnitInitialize` is the only reliable path to capture from the tap's aggregate device.
 - **Multi-process Teams tap.** New Teams renders audio in renderer/GPU child processes, not in the process holding the power assertion. The recorder enumerates every Teams-related CoreAudio process object and taps them all.
 - **SlidingWindowAsrManager for dictation.** Dictation uses FluidAudio's `SlidingWindowAsrManager` with the `.streaming` preset (11 s chunks, 2 s left/right context). The manager handles overlapping windows, resampling, and stable/volatile text promotion internally. Confirmed text is injected incrementally; remaining volatile text is flushed on stop. This also restores vocabulary boosting, which was removed from the batch `AsrManager` API in FluidAudio 0.13.6.
-- **Carbon for global hotkeys.** `RegisterEventHotKey` doesn't need Accessibility permission and survives ad-hoc rebuilds, unlike `CGEvent.tapCreate` or `NSEvent` monitors (which can't suppress events).
+- **Carbon for global hotkeys.** `RegisterEventHotKey` doesn't need Accessibility permission and survives ad-hoc rebuilds, unlike `CGEvent.tapCreate` or `NSEvent` monitors (which can't suppress events). `HotkeyManager` keeps a `[UInt32: HotkeyManager]` registry sharing one Carbon event handler so multiple shortcuts (dictation, meeting notes) coexist with no per-instance handler churn.
 - **Per-track transcription.** The app and mic tracks are transcribed separately, then merged by timestamp. Avoids crosstalk artifacts from a pre-mixed source.
 - **Local user is the mic track.** No diarization needed to identify the local user — the mic track is always "Me" (or the name set in Settings → Speakers). The mic embedding is stored and updated silently each meeting.
 
@@ -180,7 +182,7 @@ Orphan WAVs from previous crashes are cleaned on launch, and any private aggrega
 swift run HeardTests
 ```
 
-109 tests covering `VadSegmentMap`, cosine distance, `SpeakerMatcher`, `SegmentMerger`, `AudioPreprocessor`, `TranscriptWriter`, `SpeakerStore`, `PipelineQueueStore`, and `RosterReader` via a lightweight in-house harness — no XCTest or Xcode required.
+114 tests covering `VadSegmentMap`, cosine distance, `SpeakerMatcher`, `SegmentMerger`, `AudioPreprocessor`, `TranscriptWriter` (incl. note interleaving and rename safety), `SpeakerStore`, `PipelineQueueStore` (incl. `MeetingNote` round-trip and legacy queue decode), and `RosterReader` via a lightweight in-house harness — no XCTest or Xcode required.
 
 **Manual smoke test:** `./scripts/bundle.sh && open build/Heard.app`, enable Developer Mode in Settings → General, then use **Simulate Meeting** from the menu bar to exercise the full flow without a real Teams call.
 

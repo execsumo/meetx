@@ -6,6 +6,8 @@ The app builds cleanly with `swift build` and runs as a menu bar app on macOS 15
 
 **Dictation feature is fully functional** — speech recognition, text injection via CGEvent unicode insertion, and global hotkey (Ctrl+Shift+D) all working. Requires building with a stable code signing identity (`./scripts/bundle.sh --sign "Heard Dev"`) so Accessibility permission persists across rebuilds.
 
+**In-meeting notes are fully functional** — global hotkey (Ctrl+Shift+N by default) opens a focused composer panel during recording; notes interleave chronologically into the rendered transcript as italicized `**Note from <userName>:**` lines. See "In-Meeting Notes" below.
+
 ## What's Working
 
 ### Meeting Detection
@@ -53,6 +55,16 @@ The app builds cleanly with `swift build` and runs as a menu bar app on macOS 15
 - Status detection checks FluidAudio's actual cache paths (`~/Library/Application Support/FluidAudio/Models/`)
 - Progress tracking per model during download
 - Models auto-download on first meeting if not pre-downloaded
+
+### In-Meeting Notes
+- During an active recording, the user can press a global hotkey (default Ctrl+Shift+N, configurable in Settings → General → Meeting Notes) to open a small floating composer panel.
+- Composer is an `NSPanel` subclass overriding `canBecomeKey` so the text editor takes focus immediately; first keystroke goes into the field. Esc cancels, Cmd+Return saves.
+- The note's recording-relative timestamp is captured at panel-open time (not submit time), so a slow typer's note still anchors to when they reacted.
+- Notes are stored on `RecordingSession.notes` while the meeting is in progress; carried into the `PipelineJob` when recording stops; persisted in `pipeline_queue.json` (with backwards-compat decoding for pre-feature queue files).
+- If the user submits *after* the meeting has ended, `PipelineProcessor.attachNoteToFinishedJob(at:text:)` finds the matching enqueued/processing job by wall-clock time and attaches there instead.
+- `TranscriptWriter.renderBody` interleaves notes with spoken segments by timestamp and renders them as `[mm:ss] _**Note from <userName>:** ...text..._` (italicized, distinct from `**Speaker:**` blocks). Empty `userName` falls back to `Me` — same convention as the mic-track speaker label.
+- `HotkeyManager` was refactored to support multiple hotkeys: each manager owns a unique `id` (1 = dictation, 2 = notes), all sharing one Carbon event handler that dispatches by `EventHotKeyID`.
+- Hotkey-pressed with no active recording: brief beep + log; the composer doesn't open.
 
 ### Dictation (Fully Working)
 
@@ -149,7 +161,8 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 | `Sources/HeardCore/ModelDownloadManager.swift` | Pre-download manager for FluidAudio models |
 | `Sources/HeardCore/DictationManager.swift` | Real-time dictation engine (batch ASR + polling loop) |
 | `Sources/HeardCore/TextInjector.swift` | Text injection via CGEvent unicode insertion |
-| `Sources/HeardCore/HotkeyManager.swift` | Global hotkey via Carbon RegisterEventHotKey |
+| `Sources/HeardCore/HotkeyManager.swift` | Global hotkey via Carbon RegisterEventHotKey (multi-hotkey registry, dispatched by `EventHotKeyID`) |
+| `Sources/HeardCore/MeetingNoteComposer.swift` | Floating `NSPanel` composer for in-meeting notes |
 | `Info.plist` | App bundle metadata |
 | `Heard.entitlements` | Audio input entitlement |
 | `scripts/bundle.sh` | Build + bundle script |

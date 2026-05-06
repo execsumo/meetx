@@ -435,6 +435,103 @@ func runTranscriptWriterTests() {
         let t3: TimeInterval = 0
         try expectEqual(t3.timestampString, "00:00")
     }
+
+    test("Notes are interleaved chronologically with segments") {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HeardTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let doc = TranscriptDocument(
+            title: "Q1 Review",
+            startTime: Date(),
+            endTime: Date().addingTimeInterval(120),
+            participants: ["Alice", "Me"],
+            segments: [
+                TranscriptSegment(speaker: "Alice", startTime: 0, endTime: 20, text: "We saw FCR jump."),
+                TranscriptSegment(speaker: "Me", startTime: 30, endTime: 60, text: "Nice work."),
+            ],
+            notes: [
+                MeetingNote(offsetSeconds: 22, text: "FCR = First Call Resolution"),
+            ],
+            noteAuthor: "John"
+        )
+        let url = try TranscriptWriter.write(document: doc, outputDirectory: tmpDir)
+        let content = try String(contentsOf: url, encoding: .utf8)
+
+        try expect(content.contains("**Note from John:** FCR = First Call Resolution"),
+                   "Should render note line with attribution")
+        try expect(content.contains("[00:22] _**Note from John:**"),
+                   "Note timestamp uses offsetSeconds")
+
+        // Note must appear between Alice's segment (00:00) and Me's segment (00:30)
+        let aliceRange = content.range(of: "Alice:")!
+        let noteRange = content.range(of: "Note from John:")!
+        let meRange = content.range(of: "Me:** Nice work")!
+        try expect(aliceRange.lowerBound < noteRange.lowerBound, "Note must come after Alice")
+        try expect(noteRange.lowerBound < meRange.lowerBound, "Note must come before Me")
+    }
+
+    test("Notes use userName fallback when empty") {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HeardTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let doc = TranscriptDocument(
+            title: "X", startTime: Date(), endTime: Date().addingTimeInterval(60),
+            participants: [],
+            segments: [],
+            notes: [MeetingNote(offsetSeconds: 5, text: "context")],
+            noteAuthor: ""
+        )
+        let url = try TranscriptWriter.write(document: doc, outputDirectory: tmpDir)
+        let content = try String(contentsOf: url, encoding: .utf8)
+        try expect(content.contains("**Note from Me:** context"), "Empty author falls back to Me")
+    }
+
+    test("Note at same timestamp as segment sorts after the segment") {
+        let body = TranscriptWriter.renderBody(
+            segments: [TranscriptSegment(speaker: "Alice", startTime: 10, endTime: 15, text: "Hi.")],
+            notes: [MeetingNote(offsetSeconds: 10, text: "tied")],
+            noteAuthor: "John"
+        )
+        let aliceIdx = body.range(of: "Alice:")!.lowerBound
+        let noteIdx = body.range(of: "Note from John:")!.lowerBound
+        try expect(aliceIdx < noteIdx, "Segment must precede same-timestamp note")
+    }
+
+    test("Empty notes array renders identical to pre-notes output") {
+        let segs = [
+            TranscriptSegment(speaker: "Alice", startTime: 0, endTime: 5, text: "Hello."),
+            TranscriptSegment(speaker: "Bob", startTime: 5, endTime: 10, text: "Hi."),
+        ]
+        let body = TranscriptWriter.renderBody(segments: segs, notes: [], noteAuthor: "John")
+        try expect(body.contains("**Alice:** Hello."), "Alice present")
+        try expect(body.contains("**Bob:** Hi."), "Bob present")
+        try expect(!body.contains("Note from"), "No note marker without notes")
+    }
+
+    test("renameSpeakerInDirectory does not mangle Note lines") {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HeardTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let doc = TranscriptDocument(
+            title: "Standup", startTime: Date(), endTime: Date().addingTimeInterval(60),
+            participants: ["Speaker 7"],
+            segments: [TranscriptSegment(speaker: "Speaker 7", startTime: 0, endTime: 30, text: "Hey.")],
+            notes: [MeetingNote(offsetSeconds: 10, text: "side comment")],
+            noteAuthor: "John"
+        )
+        let url = try TranscriptWriter.write(document: doc, outputDirectory: tmpDir)
+        TranscriptWriter.renameSpeakerInDirectory(tmpDir, from: "Speaker 7", to: "Bob")
+        let content = try String(contentsOf: url, encoding: .utf8)
+        try expect(content.contains("**Bob:** Hey."), "Speaker rename applied")
+        try expect(content.contains("**Note from John:** side comment"),
+                   "Note line untouched by rename")
+    }
 }
 
 // MARK: - Store Tests
@@ -544,6 +641,54 @@ func runTranscriptWriterTests() {
         ))
         try expectEqual(store.jobs.count, 1)
         try expectEqual(store.activeJob?.meetingTitle, "Sprint")
+    }
+
+    test("PipelineJob persists notes across reload") {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HeardTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let url = tmpDir.appendingPathComponent("queue.json")
+        let store = PipelineQueueStore(url: url)
+        let jobID = UUID()
+        store.enqueue(PipelineJob(
+            id: jobID, meetingTitle: "Standup",
+            startTime: Date(), endTime: Date().addingTimeInterval(60),
+            appAudioPath: URL(fileURLWithPath: "/tmp/a.wav"),
+            micAudioPath: URL(fileURLWithPath: "/tmp/b.wav"),
+            transcriptPath: nil, stage: .queued,
+            stageStartTime: nil, error: nil, retryCount: 0,
+            rosterNames: [],
+            notes: [
+                MeetingNote(offsetSeconds: 12, text: "context A"),
+                MeetingNote(offsetSeconds: 45, text: "context B"),
+            ]
+        ))
+        let reloaded = PipelineQueueStore(url: url)
+        try expectEqual(reloaded.jobs.count, 1)
+        try expectEqual(reloaded.jobs.first?.notes.count, 2)
+        try expectEqual(reloaded.jobs.first?.notes[0].text, "context A")
+        try expectEqual(reloaded.jobs.first?.notes[1].offsetSeconds, 45)
+
+        // Backwards compat: a queue file written without a `notes` field still decodes.
+        let legacyJSON = """
+        [{
+          "id": "\(UUID().uuidString)",
+          "meetingTitle": "Old",
+          "startTime": "2026-01-01T00:00:00Z",
+          "endTime": "2026-01-01T00:01:00Z",
+          "appAudioPath": "file:///tmp/x.wav",
+          "micAudioPath": "file:///tmp/y.wav",
+          "stage": "complete",
+          "retryCount": 0
+        }]
+        """
+        let legacyURL = tmpDir.appendingPathComponent("legacy.json")
+        try legacyJSON.write(to: legacyURL, atomically: true, encoding: .utf8)
+        let legacyStore = PipelineQueueStore(url: legacyURL)
+        try expectEqual(legacyStore.jobs.count, 1)
+        try expectEqual(legacyStore.jobs.first?.notes.count, 0)
     }
 
     test("PipelineQueueStore recent jobs limited to 3") {
@@ -1488,6 +1633,178 @@ func runRosterReaderTests() {
 
 // MARK: - Main
 
+// MARK: - SegmentDeduplicator Tests
+
+func runSegmentDeduplicatorTests() {
+    print("\n🧹 SegmentDeduplicator Tests")
+
+    let app = TranscriptSegment(
+        speaker: "Remote",
+        startTime: 10.0,
+        endTime: 13.0,
+        text: "Let's review the quarterly numbers please."
+    )
+
+    test("drops mic segment that mirrors app text in same time window") {
+        let mic = TranscriptSegment(
+            speaker: "Me",
+            startTime: 10.1,
+            endTime: 13.1,
+            text: "Let's review the quarterly numbers please."
+        )
+        let result = SegmentDeduplicator.dropMicBleed(
+            appSegments: [app],
+            micSegments: [mic],
+            micDelaySeconds: 0
+        )
+        try expectEqual(result.count, 0)
+    }
+
+    test("drops mic fragment whose words are mostly contained in app segment") {
+        let mic = TranscriptSegment(
+            speaker: "Me",
+            startTime: 10.5,
+            endTime: 12.5,
+            text: "review quarterly numbers"
+        )
+        let result = SegmentDeduplicator.dropMicBleed(
+            appSegments: [app],
+            micSegments: [mic],
+            micDelaySeconds: 0
+        )
+        try expectEqual(result.count, 0)
+    }
+
+    test("keeps mic segment when text is unrelated") {
+        let mic = TranscriptSegment(
+            speaker: "Me",
+            startTime: 10.0,
+            endTime: 13.0,
+            text: "Yeah, totally agree with what you said."
+        )
+        let result = SegmentDeduplicator.dropMicBleed(
+            appSegments: [app],
+            micSegments: [mic],
+            micDelaySeconds: 0
+        )
+        try expectEqual(result.count, 1)
+    }
+
+    test("keeps mic segment when timestamps don't overlap (after shift)") {
+        let mic = TranscriptSegment(
+            speaker: "Me",
+            startTime: 30.0,
+            endTime: 33.0,
+            text: "Let's review the quarterly numbers please."
+        )
+        let result = SegmentDeduplicator.dropMicBleed(
+            appSegments: [app],
+            micSegments: [mic],
+            micDelaySeconds: 0
+        )
+        try expectEqual(result.count, 1)
+    }
+
+    test("applies micDelay to align mic-track time with app-track time") {
+        // Mic started 5s after app. Mic-time 5.0 == app-time 10.0.
+        let mic = TranscriptSegment(
+            speaker: "Me",
+            startTime: 5.0,
+            endTime: 8.0,
+            text: "Let's review the quarterly numbers please."
+        )
+        let result = SegmentDeduplicator.dropMicBleed(
+            appSegments: [app],
+            micSegments: [mic],
+            micDelaySeconds: 5.0
+        )
+        try expectEqual(result.count, 0)
+    }
+
+    test("tolerates small timing slop at segment edges") {
+        // Mic ends 1.0s before app starts — within edgeTolerance (1.5s).
+        let mic = TranscriptSegment(
+            speaker: "Me",
+            startTime: 8.0,
+            endTime: 9.0,
+            text: "Let's review the quarterly numbers please."
+        )
+        let result = SegmentDeduplicator.dropMicBleed(
+            appSegments: [app],
+            micSegments: [mic],
+            micDelaySeconds: 0
+        )
+        try expectEqual(result.count, 0)
+    }
+
+    test("returns mic unchanged when app segments are empty") {
+        let mic = TranscriptSegment(speaker: "Me", startTime: 0, endTime: 1, text: "Hi.")
+        let result = SegmentDeduplicator.dropMicBleed(
+            appSegments: [],
+            micSegments: [mic],
+            micDelaySeconds: 0
+        )
+        try expectEqual(result.count, 1)
+    }
+
+    test("keeps short user backchannels even when word appears in app segment") {
+        // User says "yeah" while remote is talking. App segment contains "yeah"
+        // but the user actually said it — must not be dropped as bleed.
+        let mic = TranscriptSegment(
+            speaker: "Me",
+            startTime: 11.0,
+            endTime: 11.5,
+            text: "Yeah."
+        )
+        let result = SegmentDeduplicator.dropMicBleed(
+            appSegments: [TranscriptSegment(
+                speaker: "Remote",
+                startTime: 10.0,
+                endTime: 14.0,
+                text: "Yeah, so the migration is rolling out next week."
+            )],
+            micSegments: [mic],
+            micDelaySeconds: 0
+        )
+        try expectEqual(result.count, 1)
+    }
+
+    test("keeps two-word backchannel like 'right exactly' overlapping app segment") {
+        let mic = TranscriptSegment(
+            speaker: "Me",
+            startTime: 11.0,
+            endTime: 11.6,
+            text: "Right, exactly."
+        )
+        let result = SegmentDeduplicator.dropMicBleed(
+            appSegments: [TranscriptSegment(
+                speaker: "Remote",
+                startTime: 10.0,
+                endTime: 14.0,
+                text: "Right, so as I was saying — exactly that point matters."
+            )],
+            micSegments: [mic],
+            micDelaySeconds: 0
+        )
+        try expectEqual(result.count, 1)
+    }
+
+    test("normalizes case and punctuation when comparing tokens") {
+        let mic = TranscriptSegment(
+            speaker: "Me",
+            startTime: 10.0,
+            endTime: 13.0,
+            text: "LET'S REVIEW THE QUARTERLY NUMBERS, PLEASE!"
+        )
+        let result = SegmentDeduplicator.dropMicBleed(
+            appSegments: [app],
+            micSegments: [mic],
+            micDelaySeconds: 0
+        )
+        try expectEqual(result.count, 0)
+    }
+}
+
 @main
 struct TestRunner {
     @MainActor static func main() async {
@@ -1507,6 +1824,7 @@ struct TestRunner {
         await runLifetimeRetryCapTests()
         runSpeakerMatcherEdgeTests()
         runRosterReaderTests()
+        runSegmentDeduplicatorTests()
 
         print("\n" + String(repeating: "─", count: 50))
         print("Results: \(passedTests)/\(totalTests) passed")

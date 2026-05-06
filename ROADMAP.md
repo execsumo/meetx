@@ -68,10 +68,10 @@ Features that fit the on-device, single-process philosophy but require more code
 - **Bulk-delete / archive old speakers.** Speakers with no meeting activity in N months.
 
 ### Pipeline & output
-- **Live meeting notes.** During an active meeting, allow the user to add timestamped text notes via a menu bar button or hotkey (e.g., Ctrl+Shift+N). Notes are stored in-memory and merged into the final transcript as `[HH:MM:SS] **Note:** text here` blocks, inserted chronologically. Future enhancements: voice notes that auto-transcribe, notes outside active meetings, note editing/deletion.
+- ~~**Live meeting notes.**~~ Done — Global hotkey (default ⌃⇧N, configurable in Settings → General → Meeting Notes) opens a floating composer panel during an active recording. Notes are timestamped at panel-open time (so a slow typer's note still anchors to the right moment) and rendered into the transcript as italicized `[mm:ss] _**Note from <userName>:** …_` lines, interleaved chronologically with spoken segments. Survives crash/restart via `pipeline_queue.json`. Out of scope for v1 follow-ups: in-app note editing/deletion (the user can edit the rendered `.md` directly), voice notes, hotkey-collision detection.
 - **Alternative output formats.** Out of scope per spec today, but worth re-evaluating: plain `.txt`, `.srt`, VTT for video workflows, or a lightweight HTML with anchors.
 - ~~**Configurable date format.**~~ Done - The `YYMMDD_Title.md` filename is fixed. Let power users switch to `YYYY-MM-DD_Title.md`.
-- **Transcript deduplication.** Detect when the same segment text appears from both the app and mic tracks (e.g. speaker bleed) and drop the quieter one.
+- ~~**Transcript deduplication.**~~ Done — `SegmentDeduplicator.dropMicBleed` runs in Stage 4 before diarization labels are applied. For each mic segment, it checks for a temporally overlapping app segment (after shifting by `job.micDelaySeconds`, with 1.5s edge tolerance) whose word set covers ≥ 70% of the mic segment's words AND shares at least 3 words in common. The 3-word floor protects short user backchannels ("yeah", "right exactly") from being dropped just because the same token appears somewhere in a long overlapping app segment. Asymmetric containment (mic ⊆ app) catches the case where the bleed copy transcribes to a fragment of the clean app copy. Matches are dropped from the mic track and logged via `NSLog`. Lets users run laptop-mic + speakers without the remote audio echoing back into the transcript as a second speaker.
 - **Grounded speaker assignment.** Use the WeSpeaker embedding on the mic track to double-check that the "longest-duration speaker on mic = local user" heuristic holds. If it doesn't, fall back to prompting the user.
 
 ### Dictation
@@ -103,7 +103,9 @@ These stretch the architecture and deserve a spec update before landing.
 
 ## Technical debt
 
-- **`hotkeyManagerInstance` global.** The Carbon callback bridge uses a singleton. Acceptable for a one-hotkey app, but brittle if we ever add a second global shortcut. Replace with a `UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())` context.
+- ~~**`hotkeyManagerInstance` global.**~~ Done — refactored to a `[UInt32: HotkeyManager]` registry sharing one Carbon event handler. Each `HotkeyManager` owns a unique `id` (1 = dictation, 2 = meeting notes) and the callback dispatches by inspecting the event's `EventHotKeyID`.
+- **In-meeting note editing.** Today the user edits notes by opening the rendered `.md` directly. A future polish: a "Notes" disclosure on each completed job in the menu bar dropdown that lists captured notes and lets the user edit/delete before the transcript is finalized (or rewrite the `.md` if it's already been written).
+- **Hotkey-collision detection for the note hotkey.** The dictation hotkey recorder validates against a list of system shortcuts; the meeting-note hotkey reuses the same recorder, but neither warns about clashes with the user's other custom hotkeys (Heard's own dictation hotkey, third-party launchers, etc.). Centralize the validator and run both Heard hotkeys through it.
 - **`Views.swift` size.** ~1.3 kLOC for all UI. Split by tab once we're past the early iteration phase.
 - **`SlidingWindowAsrConfig` doesn't expose `TdtConfig`.** The internal `asrConfig` hardcodes `TdtConfig()` (blankId 8192 = v3 default). `AsrManager` auto-adapts the blankId when it detects a mismatch against the loaded model, so v2 models work correctly today — but if FluidAudio ever removes that adaptation, v2 dictation would silently decode incorrectly. Upstream fix: add a `tdtConfig` parameter to `SlidingWindowAsrConfig`.
 
