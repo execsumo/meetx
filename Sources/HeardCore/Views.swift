@@ -1748,13 +1748,21 @@ private struct HotkeyRecorderView: View {
         return v == .noModifier || v == .forbidden
     }
 
+    private func isFunctionKeyCode(_ code: UInt16) -> Bool {
+        let functionKeyCodes: Set<UInt16> = [
+            122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111,
+            105, 107, 113, 106, 64, 79, 80, 90,
+        ]
+        return functionKeyCodes.contains(code)
+    }
+
     private func validate(_ combo: HotkeyCombo) -> ValidationKind? {
         let flags = combo.modifierFlags
         let modifiers: [NSEvent.ModifierFlags] = [.command, .control, .option, .shift]
         let modCount = modifiers.filter { flags.contains($0) }.count
-        if modCount == 0 { return .noModifier }
+        if modCount == 0 && !isFunctionKeyCode(combo.keyCode) { return .noModifier }
         if isForbiddenCombo(combo) { return .forbidden }
-        if modCount == 1 { return .singleModifier }
+        if modCount == 1 && !isFunctionKeyCode(combo.keyCode) { return .singleModifier }
         return nil
     }
 
