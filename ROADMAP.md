@@ -85,6 +85,12 @@ Features that fit the on-device, single-process philosophy but require more code
 - **Keyboard shortcuts in the dropdown.** ⌘S (start/stop watching), ⌘N (name speakers), ⌘, (settings), ⌘Q (quit) — mentioned in the spec but currently only partially wired.
 - **Re-ordered settings tabs.** "General" is crowded today. Consider splitting out a "Transcription" tab (custom vocabulary + output folder + CTC keep-alive) once we have more to put there.
 
+### Design ideas (from `design_handoff_app_surfaces`)
+These surfaces are specified in the design handoff but not yet implemented:
+- **First-run onboarding flow.** A 620×480px four-step permission wizard (Microphone → Screen Recording → System Audio → Accessibility) with progress indicator and Grant/Skip buttons. Shows on first launch before the main UI.
+- **About as a modal sheet.** The design specifies About as a dimmed overlay sheet (380px wide) over the app, rather than a settings tab. Current tab is functional; this would be a polish upgrade.
+- **Empty and error state views.** Dedicated centered states for three cases: no speakers yet (people icon, surfaceAlt well, "Open transcripts" CTA); microphone denied (mic icon, badSoft well, "Open System Settings…" CTA); model download failed (warn icon, badSoft well, "Retry download" CTA).
+
 ### Diagnostics
 - **In-app diagnostics pane.** Promote `scripts/diagnose.swift` into a hidden developer pane that surfaces Teams process IDs, active power assertions, CoreAudio device tree, and the most recent tap status.
 - **One-click bug report bundle.** Zip up recent logs, `pipeline_queue.json`, and (opt-in) the last failed recording's WAVs for manual sharing.
