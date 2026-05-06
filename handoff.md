@@ -72,8 +72,10 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 
 #### What's built:
 - **`DictationManager.swift`**: Uses `SlidingWindowAsrManager` (FluidAudio's proper streaming ASR) with the `.streaming` config preset. Audio is passed as `AVAudioPCMBuffer` directly via `streamAudio()`; the manager handles overlapping windows, format conversion, and stable/volatile split internally. Confirmed text is injected incrementally via `injectDelta`; any unconfirmed volatile text is flushed on stop via `finish()`. Standalone `AVAudioEngine` for mic (independent of `RecordingManager`). Model keep-alive of 120s after stop. Custom vocabulary boosting is wired via `configureVocabularyBoosting()` when CTC models are downloaded. Punctuation normalization (ITN) is applied natively to deltas before text injection.
+- **Auto-pause on meeting start**: `AppModel.stopDictationIfActive()` is called from `onMeetingStarted` before recording begins. This prevents the dictation mic engine from picking up remote participants' audio through speakers and injecting it as text into the focused app. Dictation does not auto-resume when the meeting ends — the user must restart it manually.
+- **Push-to-talk race condition fixed**: `AppModel` tracks a `pushToTalkKeyHeld` flag (set on press, cleared on release). After `DictationManager.start()` completes (which can take several seconds on first use due to model loading), `toggleDictation()` checks whether the key is still held. If the key was released before loading finished, dictation is stopped immediately, preventing it from becoming stuck on.
 - **`TextInjector.swift`**: CGEvent unicode insertion via `keyboardSetUnicodeString` + `postToPid` (same approach as FluidVoice). Falls back to HID tap, then clipboard paste. All methods require Accessibility permission.
-- **`HotkeyManager.swift`**: Carbon `RegisterEventHotKey` for global Ctrl+Shift+D hotkey. Does NOT require Accessibility permission. Supports configurable hotkey combos stored in `AppSettings`.
+- **`HotkeyManager.swift`**: Carbon `RegisterEventHotKey` for global Ctrl+Shift+D hotkey. Does NOT require Accessibility permission. Supports configurable hotkey combos stored in `AppSettings`. Function keys (F1–F20) are allowed as hotkeys without a modifier key — the `HotkeyRecorderView` validator skips the modifier-required check for function key codes.
 - **Global hotkey**: Working. Ctrl+Shift+D toggles dictation on/off from any app.
 - **Mic capture**: Working. Tap installed at the bus's native format; one `AVAudioConverter` handles both stereo→mono downmix and any-rate→16 kHz resampling in the callback (proper polyphase filter, not linear interpolation).
 - **Speech recognition**: Working perfectly. Tested transcriptions: "Alright, did Claude figure it out this time? Beep bop boop.", "Is this working now?", etc.
@@ -182,6 +184,7 @@ See [`ROADMAP.md`](./ROADMAP.md) for the full list of planned improvements, orga
 ### 2. Known rough edges
 - Menu bar dropdown uses `.window` style and has a fixed max height — jobs list can clip when many jobs accumulate
 - No collision detection between the two Heard hotkeys (dictation and meeting notes) — each runs through the per-hotkey system-shortcuts validator but neither warns about clashing with the other
+- Dictation does not auto-resume after a meeting ends (auto-pauses on meeting start; user must restart manually)
 - Teams detection only matches localized app names — non-English macOS locales may miss Teams
 
 ## Attempted Approaches for Dictation (Historical)

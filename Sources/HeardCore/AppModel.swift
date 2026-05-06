@@ -24,6 +24,9 @@ public final class AppModel: ObservableObject {
     @Published public var dictationAXLost = false
     // Prevents concurrent toggles: rapid hotkey presses during start/stop are dropped.
     private var dictationToggleInFlight = false
+    // Tracks whether the push-to-talk key is currently held. Set on press, cleared on release.
+    // Used to detect key-up events that arrive before model loading completes.
+    private var pushToTalkKeyHeld = false
 
     public let settingsStore: SettingsStore
     public let speakerStore: SpeakerStore
@@ -174,6 +177,9 @@ public final class AppModel: ObservableObject {
         self.meetingDetector = MeetingDetector(
             onMeetingStarted: { [weak self] snapshot in
                 guard let self else { return }
+                // Stop dictation before recording starts — mic should not transcribe
+                // remote participants' audio (which the mic picks up from speakers).
+                self.stopDictationIfActive()
                 do {
                     try self.recordingManager.startRecording(
                         title: snapshot.title,
@@ -255,6 +261,14 @@ public var filteredSpeakers: [SpeakerProfile] {
                     dictationManager.modelVersion = settingsStore.settings.transcriptionModel
                     dictationManager.modelKeepAliveSeconds = settingsStore.settings.dictationKeepAlive
                     try await dictationManager.start()
+                    // Push-to-talk race: if the key was released before loading finished,
+                    // stop immediately rather than leaving dictation stuck on.
+                    if settingsStore.settings.pushToTalk && !pushToTalkKeyHeld {
+                        dictationManager.modelKeepAliveSeconds = settingsStore.settings.dictationKeepAlive
+                        await dictationManager.stop()
+                        dictationError = nil
+                        return
+                    }
                     isDictating = true
                     dictationError = nil
                     if settingsStore.settings.showDictationHUD { DictationHUD.shared.show() }
@@ -375,17 +389,18 @@ public var filteredSpeakers: [SpeakerProfile] {
             onPressed: { [weak self] in
                 guard let self else { return }
                 if pushToTalk {
-                    // Push-to-talk: start on press
+                    self.pushToTalkKeyHeld = true
                     if !self.isDictating { self.toggleDictation() }
                 } else {
-                    // Toggle mode: flip on press
                     self.toggleDictation()
                 }
             },
             onReleased: { [weak self] in
                 guard let self else { return }
                 if pushToTalk {
-                    // Push-to-talk: stop on release
+                    self.pushToTalkKeyHeld = false
+                    // Normal case: key released after dictation started.
+                    // The race case (released during load) is handled inside toggleDictation().
                     if self.isDictating { self.toggleDictation() }
                 }
             }
@@ -425,6 +440,21 @@ public var filteredSpeakers: [SpeakerProfile] {
 
     public func acknowledgeAXLost() {
         dictationAXLost = false
+    }
+
+    /// Unconditionally stops dictation if it is active. Used for externally-triggered stops
+    /// (e.g. meeting start) that must succeed regardless of dictationToggleInFlight.
+    private func stopDictationIfActive() {
+        guard isDictating else { return }
+        Task {
+            dictationManager.modelKeepAliveSeconds = settingsStore.settings.dictationKeepAlive
+            await dictationManager.stop()
+            isDictating = false
+            partialTranscript = ""
+            dictationError = nil
+            if settingsStore.settings.showDictationHUD { DictationHUD.shared.hide() }
+            NSLog("Heard: Dictation stopped — meeting recording started")
+        }
     }
 
     public func simulateMeeting() {
