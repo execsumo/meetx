@@ -81,10 +81,13 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 - **UI**: Dictation settings tab with enable toggle, hotkey display, model download card, Accessibility warning, live status. Menu bar shows dictation state.
 
 ### UI
-- Menu bar dropdown with status card (pulsing red while recording/dictating, orange while processing, green/yellow when watching/paused), recording timer, and quick actions
+- **Paper design system** — full visual reskin applied. 20-token warm "Paper" palette (`bg #F5EFE4`, `surface #FBF7EF`, `surfaceAlt #EFE7D7`, `sidebar #EBE2CE`, `accent #3F5C8C`, `good/warn/bad` soft tints, dark recording strip `recordingBg #2E3338`). All windows and sheets force light-only appearance via `preferredColorScheme(.light)`.
+- **Custom sidebar** — `NavigationSplitView` replaced with a manual `HStack` (188 px sidebar + detail pane) for full color control. `HeardMark` squircle glyph (Canvas-drawn: warm gradient bg, dark bubble, three-dot motif) in sidebar header and About tab.
+- **Card-based settings layout** — `SettingsCard`/`CardRow`/`ToggleRow` primitives replace `Form`/`.formStyle(.grouped)`. `HeardToggleStyle` (30×18 px pill, accent on / muteSoft off). `StatusDot` with 13 px glow-ring pulse animation.
+- Menu bar dropdown (268 px wide) with status card (dark `#2E3338` bg while recording/dictating, Paper bg otherwise), recording timer, and quick actions
 - Menu bar icons are SF Symbols with symbol effects (`recordingtape`, `record.circle` + `.breathe`, `waveform` + `.variableColor`, `exclamationmark.circle.fill`, `person.crop.circle.badge.exclamationmark`)
-- Settings window (opened via `@Environment(\.openWindow)`) with 5 tabs: **General** (launch at login, auto-watch, developer mode, custom vocabulary, output folder, permissions), **Dictation** (enable, push-to-talk, hotkey recorder, model keep-alive, custom formatting commands, live status), **Models** (download status, pipeline keep-alive, force-unload), **Speakers** (your name, inline rename, merge, delete, search/sort), **About**
-- Standalone "Name Speakers" window scene (id `speaker-naming`) with per-candidate audio playback, roster suggestions, and 120 s auto-dismiss
+- Settings window (880×600, opened via `@Environment(\.openWindow)`) with 5 tabs: **General** (launch at login, auto-watch, developer mode, custom vocabulary, output folder, permissions, meeting notes hotkey), **Dictation** (enable, push-to-talk, hotkey recorder, model keep-alive, custom formatting commands, live status), **Models** (download status, pipeline keep-alive, force-unload), **Speakers** (your name, inline rename, merge, delete, search/sort), **About**
+- Standalone "Name Speakers" window scene (id `speaker-naming`, 560×520) with per-candidate audio playback, roster suggestions, and 120 s auto-dismiss
 - Keyboard input works in Settings — `WindowActivationCoordinator` reference-counts `.accessory`/`.regular` transitions across the Settings and Name Speakers windows so closing one while the other is still open never steals keyboard focus
 - Output folder picker via `NSOpenPanel`
 - Custom vocabulary management lives in the General tab (add/remove terms, 3-char min, 50-term cap) — terms applied to both transcription and dictation via CTC boosting
@@ -178,7 +181,7 @@ See [`ROADMAP.md`](./ROADMAP.md) for the full list of planned improvements, orga
 
 ### 2. Known rough edges
 - Menu bar dropdown uses `.window` style and has a fixed max height — jobs list can clip when many jobs accumulate
-- Dictation hotkey recorder accepts any combo, including ones that clash with system shortcuts
+- No collision detection between the two Heard hotkeys (dictation and meeting notes) — each runs through the per-hotkey system-shortcuts validator but neither warns about clashing with the other
 - Teams detection only matches localized app names — non-English macOS locales may miss Teams
 
 ## Attempted Approaches for Dictation (Historical)

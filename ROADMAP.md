@@ -81,6 +81,7 @@ Features that fit the on-device, single-process philosophy but require more code
 - **Vocab-scoped dictation.** Reuse the custom-vocab boosting (already wired into `SlidingWindowAsrManager`) in a "coding mode" with camelCase / snake_case post-processing.
 
 ### Preferences & UI
+- ~~**Paper warm palette design system.**~~ Done — full visual reskin applied. 20-token "Paper" palette (`bg #F5EFE4`, `surface #FBF7EF`, `surfaceAlt #EFE7D7`, `sidebar #EBE2CE`, `accent #3F5C8C`, etc.). Custom `HStack`-based sidebar (188 px) replaces `NavigationSplitView` for full color control. `SettingsCard`/`CardRow`/`ToggleRow` primitives replace `Form`/`.formStyle(.grouped)`. `HeardMark` squircle glyph in sidebar header and About tab. `HeardToggleStyle` (30×18 px pill). `StatusDot` with 13 px glow-ring pulse. Forced light-only appearance (`preferredColorScheme(.light)`) on all windows and sheets. Settings window 880×600; Speaker Naming window 560×520.
 - **Localize the settings UI.** The spec says English-only for transcription, but the app chrome could be localized.
 - **Keyboard shortcuts in the dropdown.** ⌘S (start/stop watching), ⌘N (name speakers), ⌘, (settings), ⌘Q (quit) — mentioned in the spec but currently only partially wired.
 - **Re-ordered settings tabs.** "General" is crowded today. Consider splitting out a "Transcription" tab (custom vocabulary + output folder + CTC keep-alive) once we have more to put there.
@@ -112,7 +113,7 @@ These stretch the architecture and deserve a spec update before landing.
 - ~~**`hotkeyManagerInstance` global.**~~ Done — refactored to a `[UInt32: HotkeyManager]` registry sharing one Carbon event handler. Each `HotkeyManager` owns a unique `id` (1 = dictation, 2 = meeting notes) and the callback dispatches by inspecting the event's `EventHotKeyID`.
 - **In-meeting note editing.** Today the user edits notes by opening the rendered `.md` directly. A future polish: a "Notes" disclosure on each completed job in the menu bar dropdown that lists captured notes and lets the user edit/delete before the transcript is finalized (or rewrite the `.md` if it's already been written).
 - **Hotkey-collision detection for the note hotkey.** The dictation hotkey recorder validates against a list of system shortcuts; the meeting-note hotkey reuses the same recorder, but neither warns about clashes with the user's other custom hotkeys (Heard's own dictation hotkey, third-party launchers, etc.). Centralize the validator and run both Heard hotkeys through it.
-- **`Views.swift` size.** ~1.3 kLOC for all UI. Split by tab once we're past the early iteration phase.
+- **`Views.swift` size.** ~1.9 kLOC for all UI after the Paper design system landed. Split by tab once we're past the early iteration phase.
 - **`SlidingWindowAsrConfig` doesn't expose `TdtConfig`.** The internal `asrConfig` hardcodes `TdtConfig()` (blankId 8192 = v3 default). `AsrManager` auto-adapts the blankId when it detects a mismatch against the loaded model, so v2 models work correctly today — but if FluidAudio ever removes that adaptation, v2 dictation would silently decode incorrectly. Upstream fix: add a `tdtConfig` parameter to `SlidingWindowAsrConfig`.
 
 ## Non-goals (from `spec.md`)
