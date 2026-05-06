@@ -69,11 +69,10 @@ struct HeardApp: App {
 
         Window("Heard Settings", id: "settings") {
             SettingsView(model: appModel)
-                .frame(minWidth: 760, minHeight: 520)
                 .onAppear { WindowActivationCoordinator.begin("settings") }
                 .onDisappear { WindowActivationCoordinator.end("settings") }
         }
-        .defaultSize(width: 760, height: 520)
+        .defaultSize(width: 880, height: 600)
         .windowResizability(.contentSize)
 
         Window("Name Speakers", id: "speaker-naming") {
@@ -87,7 +86,7 @@ struct HeardApp: App {
                     }
                 }
         }
-        .defaultSize(width: 520, height: 420)
+        .defaultSize(width: 560, height: 520)
         .windowResizability(.contentSize)
     }
 }

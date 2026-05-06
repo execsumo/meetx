@@ -1,11 +1,49 @@
 import AVFoundation
 import SwiftUI
 
+// MARK: - Color helpers
+
+private extension Color {
+    init(hex: String) {
+        let v = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var n: UInt64 = 0
+        Scanner(string: v).scanHexInt64(&n)
+        self.init(
+            red:   Double((n >> 16) & 0xFF) / 255,
+            green: Double((n >>  8) & 0xFF) / 255,
+            blue:  Double( n        & 0xFF) / 255
+        )
+    }
+}
+
 // MARK: - Theme
 
 enum HeardTheme {
-    /// Respects the user's System Settings accent color.
-    static var accent: Color { .accentColor }
+    enum Paper {
+        static let bg           = Color(hex: "F5EFE4")
+        static let surface      = Color(hex: "FBF7EF")
+        static let surfaceAlt   = Color(hex: "EFE7D7")
+        static let sidebar      = Color(hex: "EBE2CE")
+        static let border       = Color(hex: "D9CFB9")
+        static let borderSoft   = Color(hex: "E5DCC8")
+        static let ink          = Color(hex: "1C2024")
+        static let ink2         = Color(hex: "3A3F47")
+        static let mute         = Color(hex: "7B7264")
+        static let muteSoft     = Color(hex: "C9BBA5")
+        static let accent       = Color(hex: "3F5C8C")
+        static let accentInk    = Color(hex: "2F4570")
+        static let accentSoft   = Color(hex: "E5EAF3")
+        static let good         = Color(hex: "3D7A4F")
+        static let goodSoft     = Color(hex: "E1EEDF")
+        static let warn         = Color(hex: "A66A1F")
+        static let warnSoft     = Color(hex: "F4E6CE")
+        static let bad          = Color(hex: "A6452B")
+        static let badSoft      = Color(hex: "F2DCD2")
+        static let recordingBg  = Color(hex: "2E3338")
+        static let recordingInk = Color(hex: "F5EFE4")
+    }
+
+    static var accent: Color { Paper.accent }
 
     enum Spacing {
         static let xs: CGFloat = 4
@@ -22,6 +60,189 @@ enum HeardTheme {
     }
 }
 
+// MARK: - HeardMark
+
+struct HeardMark: View {
+    var size: CGFloat = 26
+
+    var body: some View {
+        Canvas { ctx, sz in
+            let s = sz.width / 64
+            // Squircle background gradient
+            let bgPath = RoundedRectangle(cornerRadius: 14 * s)
+                .path(in: CGRect(origin: .zero, size: sz))
+            ctx.fill(bgPath, with: .linearGradient(
+                Gradient(colors: [Color(hex: "E8DFD2"), Color(hex: "C9BBA5")]),
+                startPoint: CGPoint(x: sz.width / 2, y: 0),
+                endPoint: CGPoint(x: sz.width / 2, y: sz.height)
+            ))
+            // Bubble shape
+            var bubble = Path()
+            bubble.move(to: CGPoint(x: 16*s, y: 22*s))
+            bubble.addCurve(to: CGPoint(x: 22*s, y: 16*s),
+                            control1: CGPoint(x: 16*s, y: 18.7*s),
+                            control2: CGPoint(x: 19.4*s, y: 16*s))
+            bubble.addLine(to: CGPoint(x: 42*s, y: 16*s))
+            bubble.addCurve(to: CGPoint(x: 48*s, y: 22*s),
+                            control1: CGPoint(x: 45.3*s, y: 16*s),
+                            control2: CGPoint(x: 48*s, y: 18.7*s))
+            bubble.addLine(to: CGPoint(x: 48*s, y: 36*s))
+            bubble.addCurve(to: CGPoint(x: 42*s, y: 42*s),
+                            control1: CGPoint(x: 48*s, y: 39.3*s),
+                            control2: CGPoint(x: 45.3*s, y: 42*s))
+            bubble.addLine(to: CGPoint(x: 35*s, y: 42*s))
+            bubble.addLine(to: CGPoint(x: 28*s, y: 48*s))
+            bubble.addLine(to: CGPoint(x: 28*s, y: 42*s))
+            bubble.addLine(to: CGPoint(x: 22*s, y: 42*s))
+            bubble.addCurve(to: CGPoint(x: 16*s, y: 36*s),
+                            control1: CGPoint(x: 18.7*s, y: 42*s),
+                            control2: CGPoint(x: 16*s, y: 39.3*s))
+            bubble.closeSubpath()
+            ctx.fill(bubble, with: .linearGradient(
+                Gradient(colors: [Color(hex: "2E3338"), Color(hex: "1C2024")]),
+                startPoint: CGPoint(x: sz.width / 2, y: 0),
+                endPoint: CGPoint(x: sz.width / 2, y: sz.height)
+            ))
+            // Three dots (cx 24/32/40, cy 29, r 2.4/3.2/2.4)
+            let dot = Color(hex: "E8DFD2")
+            ctx.fill(Path(ellipseIn: CGRect(x: (24-2.4)*s, y: (29-2.4)*s, width: 4.8*s, height: 4.8*s)),
+                     with: .color(dot.opacity(0.65)))
+            ctx.fill(Path(ellipseIn: CGRect(x: (32-3.2)*s, y: (29-3.2)*s, width: 6.4*s, height: 6.4*s)),
+                     with: .color(dot))
+            ctx.fill(Path(ellipseIn: CGRect(x: (40-2.4)*s, y: (29-2.4)*s, width: 4.8*s, height: 4.8*s)),
+                     with: .color(dot.opacity(0.65)))
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+// MARK: - Toggle Style
+
+private struct HeardToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+            Capsule()
+                .fill(configuration.isOn ? HeardTheme.Paper.accent : HeardTheme.Paper.muteSoft)
+                .frame(width: 30, height: 18)
+            Circle()
+                .fill(Color.white)
+                .shadow(color: .black.opacity(0.15), radius: 1, x: 0, y: 0.5)
+                .frame(width: 14, height: 14)
+                .padding(2)
+        }
+        .animation(.easeInOut(duration: 0.14), value: configuration.isOn)
+        .onTapGesture { configuration.isOn.toggle() }
+    }
+}
+
+// MARK: - Shared card components
+
+private struct SectionLabel: View {
+    let text: String
+    var body: some View {
+        Text(text.uppercased())
+            .font(.system(size: 10.5, weight: .bold))
+            .kerning(0.7)
+            .foregroundStyle(HeardTheme.Paper.mute)
+    }
+}
+
+private struct SettingsCard<Content: View>: View {
+    @ViewBuilder let content: Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(HeardTheme.Paper.surface)
+        .clipShape(RoundedRectangle(cornerRadius: HeardTheme.Radius.card))
+        .overlay(
+            RoundedRectangle(cornerRadius: HeardTheme.Radius.card)
+                .stroke(HeardTheme.Paper.border, lineWidth: 0.5)
+        )
+        .shadow(color: Color(red: 60/255, green: 45/255, blue: 20/255).opacity(0.06),
+                radius: 1, x: 0, y: 1)
+    }
+}
+
+private struct CardRow<Content: View>: View {
+    var isLast: Bool = false
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+            if !isLast {
+                HeardTheme.Paper.borderSoft
+                    .frame(height: 0.5)
+                    .padding(.leading, 12)
+            }
+        }
+    }
+}
+
+private struct ToggleRow: View {
+    let title: String
+    var subtitle: String? = nil
+    var isLast: Bool = false
+    let isOn: Binding<Bool>
+
+    var body: some View {
+        CardRow(isLast: isLast) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(HeardTheme.Paper.ink)
+                    if let sub = subtitle {
+                        Text(sub)
+                            .font(.system(size: 11))
+                            .foregroundStyle(HeardTheme.Paper.mute)
+                    }
+                }
+                Spacer()
+                Toggle("", isOn: isOn)
+                    .toggleStyle(HeardToggleStyle())
+                    .labelsHidden()
+            }
+        }
+    }
+}
+
+private struct StatusPill: View {
+    let text: String
+    let fg: Color
+    let bg: Color
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10.5, weight: .semibold))
+            .foregroundStyle(fg)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(bg, in: Capsule())
+    }
+}
+
+// Used inside the dark hero card in the Models tab
+private struct HeroButtonStyle: ButtonStyle {
+    var isDanger: Bool = false
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(isDanger ? Color(hex: "F2DCD2") : HeardTheme.Paper.recordingInk)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 10)
+            .background(
+                isDanger ? Color(hex: "A6452B").opacity(0.4) : Color.white.opacity(0.15),
+                in: RoundedRectangle(cornerRadius: 5)
+            )
+            .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
 // MARK: - Menu Bar Dropdown
 
 public struct MenuBarView: View {
@@ -35,7 +256,6 @@ public struct MenuBarView: View {
             if let errorMessage = model.errorMessage {
                 errorBanner(errorMessage)
             }
-
             if model.dictationAXLost {
                 axLostBanner
             }
@@ -45,7 +265,7 @@ public struct MenuBarView: View {
                 .padding(.top, 10)
                 .padding(.bottom, 8)
 
-            Divider()
+            HeardTheme.Paper.borderSoft.frame(height: 0.5)
 
             VStack(spacing: 1) {
                 if model.settingsStore.settings.developerMode {
@@ -81,15 +301,16 @@ public struct MenuBarView: View {
             .padding(.vertical, 4)
 
             if !model.queueStore.recentJobs.isEmpty {
-                Divider()
-                
+                HeardTheme.Paper.borderSoft.frame(height: 0.5)
+
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Recent Meetings")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 10, weight: .bold))
+                        .kerning(0.5)
+                        .foregroundStyle(HeardTheme.Paper.mute)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 4)
-                    
+
                     ForEach(model.queueStore.recentJobs) { job in
                         JobRow(job: job, model: model)
                     }
@@ -98,7 +319,7 @@ public struct MenuBarView: View {
                 .padding(.bottom, 4)
             }
 
-            Divider()
+            HeardTheme.Paper.borderSoft.frame(height: 0.5)
 
             VStack(spacing: 1) {
                 MenuBarRow(title: "Settings…", icon: "gearshape") {
@@ -112,7 +333,9 @@ public struct MenuBarView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
         }
-        .frame(width: 260)
+        .frame(width: 268)
+        .background(HeardTheme.Paper.bg)
+        .preferredColorScheme(.light)
         .onChange(of: model.showNamingPrompt) { _, show in
             NSLog("Heard: MenuBarView observed showNamingPrompt=\(show)")
             if show {
@@ -120,10 +343,6 @@ public struct MenuBarView: View {
                 NSApp.activate(ignoringOtherApps: true)
             }
         }
-        // Belt-and-suspenders: if showNamingPrompt was already true (e.g. a prior prompt
-        // closed without resetting it), the onChange above won't fire when new candidates
-        // arrive. Watching the candidates array transitioning from empty → non-empty
-        // covers that path independently.
         .onChange(of: model.namingCandidates.isEmpty) { wasEmpty, isEmpty in
             if wasEmpty && !isEmpty {
                 NSLog("Heard: MenuBarView observed namingCandidates became non-empty (\(model.namingCandidates.count))")
@@ -140,61 +359,55 @@ public struct MenuBarView: View {
         if let session = model.recordingManager.activeSession {
             let tapFailed = model.recordingManager.appAudioTapFailed
             StatusHeaderCard(
-                dotColor: .red,
+                dotColor: HeardTheme.Paper.bad,
                 pulsing: true,
                 title: tapFailed ? "Recording (mic only)" : "Recording",
-                titleColor: .red,
                 subtitle: tapFailed
-                    ? "No system audio — check Screen Recording permission"
+                    ? "No system audio — check Screen Recording"
                     : (session.title.isEmpty ? "Meeting" : session.title),
+                dark: true,
                 trailing: AnyView(
                     RecordingTimerView(startTime: session.startTime)
                         .monospacedDigit()
                         .font(.system(.callout, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(HeardTheme.Paper.recordingInk.opacity(0.7))
                 )
             )
         } else if let job = model.queueStore.processingJob {
             StatusHeaderCard(
-                dotColor: .orange,
+                dotColor: HeardTheme.Paper.warn,
                 pulsing: true,
                 title: "Processing",
-                titleColor: .orange,
                 subtitle: processingSubtitle(for: job),
+                dark: false,
                 trailing: nil
             )
         } else if model.phase == .processing {
-            // Phase says we're processing but the queue hasn't surfaced a job yet
-            // (e.g. between meeting end and the first stage transition). Keep the
-            // user informed instead of falling through to "Watching".
             StatusHeaderCard(
-                dotColor: .orange,
+                dotColor: HeardTheme.Paper.warn,
                 pulsing: true,
                 title: "Processing",
-                titleColor: .orange,
                 subtitle: "Preparing transcription…",
+                dark: false,
                 trailing: nil
             )
         } else if model.isDictating {
             StatusHeaderCard(
-                dotColor: .red,
+                dotColor: HeardTheme.Paper.bad,
                 pulsing: true,
                 title: "Dictating",
-                titleColor: .red,
                 subtitle: model.partialTranscript.isEmpty ? "Listening…" : String(model.partialTranscript.suffix(60)),
+                dark: true,
                 trailing: nil
             )
         } else {
-            // Idle: tappable Watching/Paused toggle
-            Button {
-                model.toggleWatching()
-            } label: {
+            Button { model.toggleWatching() } label: {
                 StatusHeaderCard(
-                    dotColor: model.meetingDetector.isWatching ? .green : .yellow,
+                    dotColor: model.meetingDetector.isWatching ? HeardTheme.Paper.good : HeardTheme.Paper.warn,
                     pulsing: false,
                     title: model.meetingDetector.isWatching ? "Watching" : "Paused",
-                    titleColor: .primary,
                     subtitle: model.meetingDetector.isWatching ? "Waiting for Teams meeting" : "Click to resume",
+                    dark: false,
                     trailing: nil
                 )
             }
@@ -204,11 +417,11 @@ public struct MenuBarView: View {
 
     private func processingSubtitle(for job: PipelineJob) -> String {
         switch job.stage {
-        case .queued: return "Queued — preparing to transcribe"
+        case .queued:        return "Queued — preparing to transcribe"
         case .preprocessing: return "Preprocessing audio"
-        case .transcribing: return "Transcribing"
-        case .diarizing: return "Identifying speakers"
-        case .assigning: return "Matching speakers"
+        case .transcribing:  return "Transcribing"
+        case .diarizing:     return "Identifying speakers"
+        case .assigning:     return "Matching speakers"
         case .complete, .failed: return job.stage.displayName
         }
     }
@@ -216,20 +429,20 @@ public struct MenuBarView: View {
     private func errorBanner(_ message: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(HeardTheme.Paper.bad)
                 .font(.caption)
             Text(message)
                 .font(.caption)
-                .foregroundStyle(.primary)
+                .foregroundStyle(HeardTheme.Paper.ink)
                 .lineLimit(2)
             Spacer(minLength: 4)
             Button("Dismiss") { model.acknowledgeError() }
                 .buttonStyle(.plain)
                 .font(.caption.weight(.medium))
-                .foregroundStyle(HeardTheme.accent)
+                .foregroundStyle(HeardTheme.Paper.accent)
         }
         .padding(10)
-        .background(.red.opacity(0.10), in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
+        .background(HeardTheme.Paper.badSoft, in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
         .padding(.horizontal, 10)
         .padding(.top, 10)
     }
@@ -237,12 +450,12 @@ public struct MenuBarView: View {
     private var axLostBanner: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(HeardTheme.Paper.warn)
                 .font(.caption)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Accessibility access was revoked. Dictation text injection stopped.")
                     .font(.caption)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(HeardTheme.Paper.ink)
                     .lineLimit(3)
                 Button("Re-grant Access…") {
                     TextInjector.ensureAccessibility()
@@ -250,16 +463,16 @@ public struct MenuBarView: View {
                 }
                 .buttonStyle(.plain)
                 .font(.caption.weight(.medium))
-                .foregroundStyle(HeardTheme.accent)
+                .foregroundStyle(HeardTheme.Paper.accent)
             }
             Spacer(minLength: 4)
             Button("Dismiss") { model.acknowledgeAXLost() }
                 .buttonStyle(.plain)
                 .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(HeardTheme.Paper.mute)
         }
         .padding(10)
-        .background(.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
+        .background(HeardTheme.Paper.warnSoft, in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
         .padding(.horizontal, 10)
         .padding(.top, 10)
     }
@@ -271,32 +484,33 @@ private struct StatusHeaderCard: View {
     let dotColor: Color
     let pulsing: Bool
     let title: String
-    let titleColor: Color
     let subtitle: String
+    var dark: Bool = false
     let trailing: AnyView?
 
     var body: some View {
         HStack(spacing: 10) {
             StatusDot(color: dotColor, pulsing: pulsing)
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(.callout, design: .default).weight(.semibold))
-                    .foregroundStyle(titleColor)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(dark ? HeardTheme.Paper.recordingInk : HeardTheme.Paper.ink)
                 Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(dark ? HeardTheme.Paper.recordingInk.opacity(0.65) : HeardTheme.Paper.mute)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
             Spacer(minLength: 4)
-            if let trailing = trailing {
-                trailing
-            }
+            if let trailing { trailing }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: HeardTheme.Radius.card))
+        .background(
+            RoundedRectangle(cornerRadius: HeardTheme.Radius.card)
+                .fill(dark ? HeardTheme.Paper.recordingBg : HeardTheme.Paper.surfaceAlt)
+        )
         .contentShape(RoundedRectangle(cornerRadius: HeardTheme.Radius.card))
     }
 }
@@ -307,12 +521,19 @@ private struct StatusDot: View {
     @State private var pulse = false
 
     var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 8, height: 8)
-            .opacity(pulsing && pulse ? 0.35 : 1.0)
-            .animation(pulsing ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true) : .default, value: pulse)
-            .onAppear { if pulsing { pulse = true } }
+        ZStack {
+            if pulsing {
+                Circle()
+                    .fill(color.opacity(pulse ? 0.22 : 0))
+                    .frame(width: 13, height: 13)
+                    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
+            }
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+        }
+        .frame(width: 13, height: 13)
+        .onAppear { if pulsing { pulse = true } }
     }
 }
 
@@ -324,19 +545,19 @@ private struct MenuBarRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            HStack(spacing: 9) {
                 Image(systemName: icon)
-                    .font(.system(size: 13))
-                    .foregroundStyle(accent ? HeardTheme.accent : .secondary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(accent ? HeardTheme.Paper.accent : HeardTheme.Paper.ink2)
                     .frame(width: 18, alignment: .center)
                 Text(title)
-                    .font(.system(.body, design: .default))
-                    .foregroundStyle(.primary)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(accent ? HeardTheme.Paper.accent : HeardTheme.Paper.ink)
                 Spacer()
             }
             .contentShape(Rectangle())
             .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.vertical, 5)
         }
         .buttonStyle(MenuBarRowStyle())
     }
@@ -346,10 +567,8 @@ private struct MenuBarRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(
-                configuration.isPressed
-                    ? Color.primary.opacity(0.08)
-                    : Color.clear,
-                in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline)
+                configuration.isPressed ? HeardTheme.Paper.surfaceAlt : Color.clear,
+                in: RoundedRectangle(cornerRadius: 5)
             )
     }
 }
@@ -360,23 +579,21 @@ private struct JobRow: View {
 
     var body: some View {
         Button(action: {
-            if job.stage == .complete {
-                model.openTranscript(job)
-            }
+            if job.stage == .complete { model.openTranscript(job) }
         }) {
-            HStack(spacing: 10) {
+            HStack(spacing: 9) {
                 Image(systemName: iconName)
-                    .font(.system(size: 13))
+                    .font(.system(size: 12))
                     .foregroundStyle(iconColor)
                     .frame(width: 18, alignment: .center)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(job.meetingTitle.isEmpty ? "Meeting" : job.meetingTitle)
-                        .font(.system(.body, design: .default))
-                        .foregroundStyle(.primary)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(HeardTheme.Paper.ink)
                         .lineLimit(1)
                     Text(job.startTime.formatted(date: .omitted, time: .shortened))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11))
+                        .foregroundStyle(HeardTheme.Paper.mute)
                 }
                 Spacer()
             }
@@ -393,29 +610,25 @@ private struct JobRow: View {
                     }
                 }
             } else if job.stage == .failed {
-                Button("Retry") {
-                    model.retry(job)
-                }
+                Button("Retry") { model.retry(job) }
             }
-            Button("Dismiss") {
-                model.dismissJob(job)
-            }
+            Button("Dismiss") { model.dismissJob(job) }
         }
     }
 
     private var iconName: String {
         switch job.stage {
         case .complete: return "doc.text.fill"
-        case .failed: return "exclamationmark.triangle.fill"
-        default: return "arrow.triangle.2.circlepath"
+        case .failed:   return "exclamationmark.triangle.fill"
+        default:        return "arrow.triangle.2.circlepath"
         }
     }
 
     private var iconColor: Color {
         switch job.stage {
-        case .complete: return .secondary
-        case .failed: return .red
-        default: return .orange
+        case .complete: return HeardTheme.Paper.mute
+        case .failed:   return HeardTheme.Paper.bad
+        default:        return HeardTheme.Paper.warn
         }
     }
 }
@@ -431,12 +644,8 @@ public struct RecordingTimerView: View {
 
     public var body: some View {
         Text(formatDuration(elapsed))
-            .onReceive(timer) { _ in
-                elapsed = Date().timeIntervalSince(startTime)
-            }
-            .onAppear {
-                elapsed = Date().timeIntervalSince(startTime)
-            }
+            .onReceive(timer) { _ in elapsed = Date().timeIntervalSince(startTime) }
+            .onAppear { elapsed = Date().timeIntervalSince(startTime) }
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {
@@ -454,7 +663,7 @@ public struct PulsingDot: View {
     var size: CGFloat = 8
     public init(size: CGFloat = 8) { self.size = size }
     public var body: some View {
-        StatusDot(color: .red, pulsing: true)
+        StatusDot(color: HeardTheme.Paper.bad, pulsing: true)
             .frame(width: size, height: size)
     }
 }
@@ -476,30 +685,12 @@ public struct SettingsView: View {
     }
 
     public var body: some View {
-        NavigationSplitView {
-            List(SettingsTab.allCases, selection: Binding(
-                get: { model.selectedSettingsTab },
-                set: { if let tab = $0 { model.selectedSettingsTab = tab } }
-            )) { tab in
-                Label(tab.label, systemImage: tab.icon)
-                    .tag(tab)
-            }
-            .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 220)
-        } detail: {
-            Group {
-                switch model.selectedSettingsTab {
-                case .general:   generalSection
-                case .dictation: dictationSection
-                case .models:    modelsSection
-                case .speakers:  speakersSection
-                case .about:     aboutSection
-                }
-            }
-            .navigationTitle(model.selectedSettingsTab.label)
-            .frame(minWidth: 520, minHeight: 460)
+        HStack(spacing: 0) {
+            sidebar
+            detailPane
         }
-        .frame(minWidth: 760, minHeight: 500)
+        .frame(minWidth: 880, minHeight: 600)
+        .preferredColorScheme(.light)
         .sheet(isPresented: $isRecordingHotkey) {
             HotkeyRecorderView(
                 onCommit: { combo in
@@ -508,6 +699,7 @@ public struct SettingsView: View {
                 },
                 onCancel: { isRecordingHotkey = false }
             )
+            .preferredColorScheme(.light)
         }
         .sheet(isPresented: $isRecordingNoteHotkey) {
             HotkeyRecorderView(
@@ -520,386 +712,580 @@ public struct SettingsView: View {
         }
     }
 
-    // MARK: General
+    // MARK: Sidebar
 
-    private var generalSection: some View {
-        Form {
-            Section("Preferences") {
-                Toggle("Launch at Login", isOn: Binding(
-                    get: { model.settingsStore.settings.launchAtLogin },
-                    set: { model.setLaunchAtLogin($0) }
-                ))
-                Toggle("Auto-Watch on Launch", isOn: settingsBinding(\.autoWatch))
-                Toggle("Developer Mode", isOn: settingsBinding(\.developerMode))
-                    .help("Shows simulate meeting buttons in the menu bar for testing")
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                HeardMark(size: 26)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Heard")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(HeardTheme.Paper.ink)
+                    Text("0.1.0")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(HeardTheme.Paper.mute)
+                }
+                Spacer()
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
 
-            Section {
-                HStack(spacing: 8) {
-                    TextField("Add a term (min 3 chars)", text: $model.vocabularyDraft)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit { model.addVocabularyTerm() }
-                    Button("Add") { model.addVocabularyTerm() }
-                        .disabled(model.vocabularyDraft.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
-                }
+            HeardTheme.Paper.border.frame(height: 0.5)
 
-                if model.settingsStore.settings.customVocabulary.isEmpty {
-                    Text("No custom terms. Add domain-specific words to improve recognition.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                } else {
-                    FlowLayout(model.settingsStore.settings.customVocabulary, id: \.self) { term in
-                        HStack(spacing: 5) {
-                            Text(term).font(.callout)
-                            Button {
-                                model.removeVocabularyTerm(term)
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color.primary.opacity(0.06), in: Capsule())
-                    }
-                }
-
-                Text("\(model.settingsStore.settings.customVocabulary.count) / 50 terms")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            } header: {
-                Text("Custom Vocabulary")
-            }
-
-            Section("Output Folder") {
-                Text(model.settingsStore.settings.outputDirectory)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                HStack(spacing: 8) {
-                    Button("Choose…") { model.chooseOutputDirectory() }
-                    Button("Reset") { model.chooseDefaultOutputDirectory() }
-                    Button("Open in Finder") { model.openOutputDirectory() }
-                }
-
-                Picker("Filename Date Format", selection: settingsBinding(\.transcriptDateFormat)) {
-                    ForEach(TranscriptDateFormat.allCases) { format in
-                        Text(format.displayName).tag(format)
-                    }
+            VStack(spacing: 2) {
+                ForEach(SettingsTab.allCases) { tab in
+                    sidebarItem(tab)
                 }
             }
+            .padding(.horizontal, 6)
+            .padding(.top, 8)
 
-            Section {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("In-Meeting Note Hotkey")
-                        Text("Press during a meeting to type a note that's inserted into the transcript at that moment, marked as supplemental.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer()
-                    Text(model.settingsStore.settings.meetingNoteHotkey.displayString)
-                        .font(.system(.callout, design: .monospaced).weight(.medium))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
-                    Button("Record…") { isRecordingNoteHotkey = true }
-                }
-            } header: {
-                Text("Meeting Notes")
+            Spacer()
+        }
+        .frame(width: 188)
+        .background(HeardTheme.Paper.sidebar)
+        .overlay(alignment: .trailing) {
+            HeardTheme.Paper.border.frame(width: 0.5)
+        }
+    }
+
+    private func sidebarItem(_ tab: SettingsTab) -> some View {
+        let isSelected = model.selectedSettingsTab == tab
+        return Button {
+            model.selectedSettingsTab = tab
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: tab.icon)
+                    .font(.system(size: 13))
+                    .foregroundStyle(isSelected ? HeardTheme.Paper.accent : HeardTheme.Paper.ink2)
+                    .frame(width: 18, alignment: .center)
+                Text(tab.label)
+                    .font(.system(size: 12.5, weight: isSelected ? .semibold : .medium))
+                    .foregroundStyle(isSelected ? HeardTheme.Paper.ink : HeardTheme.Paper.ink2)
+                Spacer()
             }
-
-            Section("Permissions") {
-                ForEach(model.permissionCenter.statuses) { permission in
-                    PermissionRow(permission: permission, model: model)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(HeardTheme.Paper.surface)
+                        .shadow(color: Color(red: 60/255, green: 45/255, blue: 20/255).opacity(0.06),
+                                radius: 1, x: 0, y: 1)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(HeardTheme.Paper.border, lineWidth: 0.5)
+                        )
                 }
             }
         }
-        .formStyle(.grouped)
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+    }
+
+    // MARK: Detail pane
+
+    private var detailPane: some View {
+        Group {
+            switch model.selectedSettingsTab {
+            case .general:   generalSection
+            case .dictation: dictationSection
+            case .models:    modelsSection
+            case .speakers:  speakersSection
+            case .about:     aboutSection
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: General
+
+    private var generalSection: some View {
+        paneScroll {
+            sectionGroup("Behavior") {
+                SettingsCard {
+                    ToggleRow(
+                        title: "Launch at Login",
+                        isOn: Binding(
+                            get: { model.settingsStore.settings.launchAtLogin },
+                            set: { model.setLaunchAtLogin($0) }
+                        )
+                    )
+                    ToggleRow(title: "Auto-Watch on Launch", isOn: settingsBinding(\.autoWatch))
+                    ToggleRow(
+                        title: "Developer Mode",
+                        subtitle: "Shows simulate meeting buttons for testing",
+                        isLast: true,
+                        isOn: settingsBinding(\.developerMode)
+                    )
+                }
+            }
+
+            sectionGroup("Permissions") {
+                SettingsCard {
+                    let perms = model.permissionCenter.statuses
+                    ForEach(Array(perms.enumerated()), id: \.offset) { index, perm in
+                        CardRow(isLast: index == perms.count - 1) {
+                            PermissionRow(permission: perm, model: model)
+                        }
+                    }
+                }
+            }
+
+            sectionGroup("Meeting Notes") {
+                SettingsCard {
+                    CardRow(isLast: true) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("In-Meeting Note Hotkey")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(HeardTheme.Paper.ink)
+                                Text("Press during a meeting to type a note inserted into the transcript, marked as supplemental.")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer()
+                            Text(model.settingsStore.settings.meetingNoteHotkey.displayString)
+                                .font(.system(size: 11, design: .monospaced).weight(.medium))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(HeardTheme.Paper.surfaceAlt,
+                                            in: RoundedRectangle(cornerRadius: 5))
+                            Button("Record…") { isRecordingNoteHotkey = true }
+                        }
+                    }
+                }
+            }
+
+            sectionGroup("Custom Vocabulary") {
+                SettingsCard {
+                    CardRow {
+                        HStack(spacing: 8) {
+                            TextField("Add a term (min 3 chars)", text: $model.vocabularyDraft)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit { model.addVocabularyTerm() }
+                            Button("Add") { model.addVocabularyTerm() }
+                                .disabled(model.vocabularyDraft.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
+                        }
+                    }
+                    if !model.settingsStore.settings.customVocabulary.isEmpty {
+                        CardRow {
+                            FlowLayout(model.settingsStore.settings.customVocabulary, id: \.self) { term in
+                                HStack(spacing: 5) {
+                                    Text(term).font(.system(size: 12))
+                                        .foregroundStyle(HeardTheme.Paper.ink)
+                                    Button {
+                                        model.removeVocabularyTerm(term)
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(HeardTheme.Paper.mute)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(HeardTheme.Paper.surfaceAlt, in: Capsule())
+                            }
+                        }
+                    }
+                    CardRow(isLast: true) {
+                        Text("\(model.settingsStore.settings.customVocabulary.count) / 50 terms")
+                            .font(.system(size: 11))
+                            .foregroundStyle(HeardTheme.Paper.mute)
+                    }
+                }
+            }
+
+            sectionGroup("Output Folder") {
+                SettingsCard {
+                    CardRow {
+                        Text(model.settingsStore.settings.outputDirectory)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(HeardTheme.Paper.mute)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    CardRow {
+                        HStack(spacing: 8) {
+                            Button("Choose…") { model.chooseOutputDirectory() }
+                            Button("Reset") { model.chooseDefaultOutputDirectory() }
+                            Button("Open in Finder") { model.openOutputDirectory() }
+                            Spacer()
+                        }
+                    }
+                    CardRow(isLast: true) {
+                        HStack {
+                            Text("Filename Date Format")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                            Spacer()
+                            Picker("", selection: settingsBinding(\.transcriptDateFormat)) {
+                                ForEach(TranscriptDateFormat.allCases) { format in
+                                    Text(format.displayName).tag(format)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(maxWidth: 200)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: Dictation
 
     private var dictationSection: some View {
-        Form {
-            Section {
-                Toggle(isOn: Binding(
-                    get: { model.settingsStore.settings.dictationEnabled },
-                    set: { model.setDictationEnabled($0) }
-                )) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Enable Dictation")
-                        Text("Press the hotkey to start/stop dictating into any text field.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } header: {
-                Text("Dictation")
-            }
-
-            Section("Hotkey") {
-                Toggle(isOn: Binding(
-                    get: { model.settingsStore.settings.pushToTalk },
-                    set: { model.setPushToTalk($0) }
-                )) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Push to Talk")
-                        Text("Hold the hotkey to dictate, release to stop.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .disabled(!model.settingsStore.settings.dictationEnabled)
-
-                HStack {
-                    Text(model.settingsStore.settings.pushToTalk ? "Hold to dictate" : "Toggle dictation")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(model.settingsStore.settings.dictationHotkey.displayString)
-                        .font(.system(.callout, design: .monospaced).weight(.medium))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
-                    Button("Record…") { isRecordingHotkey = true }
-                        .disabled(!model.settingsStore.settings.dictationEnabled)
-                }
-
-                if !permissionCenter.isAccessibilityGranted {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Accessibility permission is required for text injection into other apps.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Button("Grant Accessibility Access…") {
-                                TextInjector.ensureAccessibility()
-                            }
-                            .controlSize(.small)
-                        }
-                    }
-                }
-            }
-
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Keep dictation model loaded for **\(keepAliveLabel(model.settingsStore.settings.dictationKeepAlive))** after stopping.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Slider(
-                        value: Binding(
-                            get: { model.settingsStore.settings.dictationKeepAlive },
-                            set: { model.settingsStore.settings.dictationKeepAlive = $0 }
-                        ),
-                        in: 0...600,
-                        step: 30
+        paneScroll {
+            sectionGroup("Dictation") {
+                SettingsCard {
+                    ToggleRow(
+                        title: "Enable Dictation",
+                        subtitle: "Press the hotkey to start/stop dictating into any text field.",
+                        isLast: true,
+                        isOn: Binding(
+                            get: { model.settingsStore.settings.dictationEnabled },
+                            set: { model.setDictationEnabled($0) }
+                        )
                     )
-                    HStack {
-                        Text("Unload immediately").font(.caption2).foregroundStyle(.tertiary)
-                        Spacer()
-                        Text("10 minutes").font(.caption2).foregroundStyle(.tertiary)
-                    }
                 }
-
-                Button("Unload Dictation Models Now") {
-                    model.dictationManager.unloadModels()
-                }
-                .controlSize(.small)
-                .disabled(model.isDictating)
-            } header: {
-                Text("Model Keep-Alive")
             }
 
-            Section("Overlay") {
-                Toggle(isOn: settingsBinding(\.showDictationHUD)) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Show Dictation Indicator")
-                        Text("A floating pill appears on screen when dictation is active — useful when the menu bar is hidden.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .disabled(!model.settingsStore.settings.dictationEnabled)
-            }
+            sectionGroup("Hotkey") {
+                SettingsCard {
+                    ToggleRow(
+                        title: "Push to Talk",
+                        subtitle: "Hold the hotkey to dictate, release to stop.",
+                        isOn: Binding(
+                            get: { model.settingsStore.settings.pushToTalk },
+                            set: { model.setPushToTalk($0) }
+                        )
+                    )
+                    .disabled(!model.settingsStore.settings.dictationEnabled)
 
-            Section {
-                if model.settingsStore.settings.formattingCommands.isEmpty {
-                    Text("No custom formatting commands.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 8)
-                } else {
-                    List {
-                        ForEach(model.settingsStore.settings.formattingCommands) { cmd in
-                            HStack {
-                                Text(cmd.spoken)
-                                    .font(.system(.body, design: .monospaced))
-                                Image(systemName: "arrow.right")
-                                    .foregroundStyle(.tertiary)
-                                Text(cmd.written.replacingOccurrences(of: "\n", with: "\\n"))
-                                    .font(.system(.body, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Button {
-                                    model.removeFormattingCommand(id: cmd.id)
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.tertiary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.vertical, 4)
+                    CardRow(isLast: permissionCenter.isAccessibilityGranted) {
+                        HStack {
+                            Text(model.settingsStore.settings.pushToTalk ? "Hold to dictate" : "Toggle dictation")
+                                .font(.system(size: 12))
+                                .foregroundStyle(HeardTheme.Paper.mute)
+                            Spacer()
+                            Text(model.settingsStore.settings.dictationHotkey.displayString)
+                                .font(.system(size: 11, design: .monospaced).weight(.medium))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(HeardTheme.Paper.surfaceAlt,
+                                            in: RoundedRectangle(cornerRadius: 5))
+                            Button("Record…") { isRecordingHotkey = true }
+                                .disabled(!model.settingsStore.settings.dictationEnabled)
                         }
                     }
-                    .frame(minHeight: 100)
-                }
 
-                HStack {
-                    TextField("Spoken (e.g. 'new paragraph')", text: $commandSpokenDraft)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Written (e.g. '\\n\\n')", text: $commandWrittenDraft)
-                        .textFieldStyle(.roundedBorder)
-                    Button("Add") {
-                        let written = commandWrittenDraft.replacingOccurrences(of: "\\n", with: "\n")
-                        model.addFormattingCommand(spoken: commandSpokenDraft, written: written)
-                        commandSpokenDraft = ""
-                        commandWrittenDraft = ""
+                    if !permissionCenter.isAccessibilityGranted {
+                        CardRow(isLast: true) {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(HeardTheme.Paper.warn)
+                                    .font(.system(size: 11))
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text("Accessibility permission is required for text injection into other apps.")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(HeardTheme.Paper.mute)
+                                    Button("Grant Accessibility Access…") {
+                                        TextInjector.ensureAccessibility()
+                                    }
+                                    .controlSize(.small)
+                                }
+                            }
+                        }
                     }
-                    .disabled(commandSpokenDraft.trimmingCharacters(in: .whitespaces).isEmpty || commandWrittenDraft.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-            } header: {
-                Text("Custom Formatting Commands")
-            } footer: {
-                Text("Use `\\n` for new lines. Example: Spoken `new line` → Written `\\n`.")
+            }
+
+            sectionGroup("Overlay") {
+                SettingsCard {
+                    ToggleRow(
+                        title: "Show Dictation Indicator",
+                        subtitle: "A floating pill appears on screen when dictation is active.",
+                        isLast: true,
+                        isOn: settingsBinding(\.showDictationHUD)
+                    )
+                    .disabled(!model.settingsStore.settings.dictationEnabled)
+                }
+            }
+
+            sectionGroup("Custom Formatting Commands") {
+                SettingsCard {
+                    let cmds = model.settingsStore.settings.formattingCommands
+                    if cmds.isEmpty {
+                        CardRow {
+                            Text("No custom formatting commands.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(HeardTheme.Paper.mute)
+                        }
+                    } else {
+                        ForEach(cmds) { cmd in
+                            CardRow(isLast: false) {
+                                HStack {
+                                    Text(cmd.spoken)
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(HeardTheme.Paper.ink)
+                                    Image(systemName: "arrow.right")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(HeardTheme.Paper.mute)
+                                    Text(cmd.written.replacingOccurrences(of: "\n", with: "\\n"))
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(HeardTheme.Paper.mute)
+                                    Spacer()
+                                    Button {
+                                        model.removeFormattingCommand(id: cmd.id)
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundStyle(HeardTheme.Paper.mute)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    CardRow(isLast: true) {
+                        HStack(spacing: 8) {
+                            TextField("Spoken (e.g. 'new paragraph')", text: $commandSpokenDraft)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("Written (e.g. '\\n\\n')", text: $commandWrittenDraft)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Add") {
+                                let written = commandWrittenDraft.replacingOccurrences(of: "\\n", with: "\n")
+                                model.addFormattingCommand(spoken: commandSpokenDraft, written: written)
+                                commandSpokenDraft = ""
+                                commandWrittenDraft = ""
+                            }
+                            .disabled(
+                                commandSpokenDraft.trimmingCharacters(in: .whitespaces).isEmpty ||
+                                commandWrittenDraft.trimmingCharacters(in: .whitespaces).isEmpty
+                            )
+                        }
+                    }
+                }
+            }
+
+            sectionGroup("Model Keep-Alive") {
+                SettingsCard {
+                    CardRow {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Keep dictation model loaded for **\(keepAliveLabel(model.settingsStore.settings.dictationKeepAlive))** after stopping.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                            Slider(
+                                value: Binding(
+                                    get: { model.settingsStore.settings.dictationKeepAlive },
+                                    set: { model.settingsStore.settings.dictationKeepAlive = $0 }
+                                ),
+                                in: 0...600, step: 30
+                            )
+                            HStack {
+                                Text("Unload immediately")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                                Spacer()
+                                Text("10 minutes")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                            }
+                        }
+                    }
+                    CardRow(isLast: true) {
+                        HStack {
+                            Text("~800 MB RAM while loaded")
+                                .font(.system(size: 11))
+                                .foregroundStyle(HeardTheme.Paper.mute)
+                            Spacer()
+                            Button("Unload Now") { model.dictationManager.unloadModels() }
+                                .disabled(model.isDictating)
+                        }
+                    }
+                }
             }
 
             if model.isDictating {
-                Section("Status") {
-                    HStack(spacing: 8) {
-                        StatusDot(color: .red, pulsing: true)
-                        Text("Dictating…")
-                    }
-                    if !model.partialTranscript.isEmpty {
-                        Text(model.partialTranscript)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(3)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                sectionGroup("Status") {
+                    SettingsCard {
+                        CardRow(isLast: model.partialTranscript.isEmpty) {
+                            HStack(spacing: 8) {
+                                StatusDot(color: HeardTheme.Paper.bad, pulsing: true)
+                                Text("Dictating…")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(HeardTheme.Paper.ink)
+                            }
+                        }
+                        if !model.partialTranscript.isEmpty {
+                            CardRow(isLast: true) {
+                                Text(model.partialTranscript)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                                    .lineLimit(3)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
                     }
                 }
             }
 
             if let error = model.dictationError {
-                Section {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .foregroundStyle(.red)
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                sectionGroup("Error") {
+                    SettingsCard {
+                        CardRow(isLast: true) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .foregroundStyle(HeardTheme.Paper.bad)
+                                Text(error)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                            }
+                        }
                     }
                 }
             }
         }
-        .formStyle(.grouped)
     }
 
     // MARK: Models
 
     private var modelsSection: some View {
-        Form {
-            Section("Transcription Model") {
-                Picker("Parakeet Version", selection: Binding(
-                    get: { model.settingsStore.settings.transcriptionModel },
-                    set: { model.setTranscriptionModel($0) }
-                )) {
-                    ForEach(TranscriptionModel.allCases) { version in
-                        Text(version.displayName).tag(version)
-                    }
+        paneScroll {
+            // Hero card (dark gradient)
+            let readyCount = model.modelCatalog.statuses.filter { $0.availability == .ready }.count
+            let totalCount = model.modelCatalog.statuses.count
+
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(readyCount) of \(totalCount) models ready")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(HeardTheme.Paper.recordingInk)
+                    Text(model.downloadManager.allBatchModelsReady
+                         ? "Ready to transcribe"
+                         : "Some models need downloading")
+                        .font(.system(size: 11))
+                        .foregroundStyle(HeardTheme.Paper.recordingInk.opacity(0.65))
                 }
-                .pickerStyle(.radioGroup)
-                Text("V2 is recommended for English meetings. Changing versions will reload models on the next transcription.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-
-            Section("Model Status") {
-                ForEach(model.modelCatalog.statuses) { item in
-                    ModelStatusRow(item: item, downloadManager: model.downloadManager)
-                }
-
-                if !model.downloadManager.allBatchModelsReady {
-                    Button {
-                        model.downloadManager.downloadAllModels()
-                    } label: {
-                        Label("Download All Models", systemImage: "arrow.down.circle.fill")
+                Spacer()
+                VStack(alignment: .trailing, spacing: 6) {
+                    if !model.downloadManager.allBatchModelsReady {
+                        Button("Download Missing") {
+                            model.downloadManager.downloadAllModels()
+                        }
+                        .buttonStyle(HeroButtonStyle())
                     }
-                    .buttonStyle(.borderedProminent)
-
-                    Text("Models download automatically on first meeting, but you can pre-download here.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                    Button("Unload All") {
+                        model.pipelineProcessor.unloadPipelineModels()
+                        model.dictationManager.unloadModels()
+                    }
+                    .buttonStyle(HeroButtonStyle(isDanger: true))
+                    .disabled(model.pipelineProcessor.isProcessing || model.isDictating)
                 }
             }
+            .padding(14)
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "2E3338"), Color(hex: "1C2024")],
+                    startPoint: .top, endPoint: .bottom
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: HeardTheme.Radius.card))
+            .overlay(
+                RoundedRectangle(cornerRadius: HeardTheme.Radius.card)
+                    .stroke(Color(hex: "3A3F47"), lineWidth: 0.5)
+            )
 
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Keep transcription models loaded for **\(keepAliveLabel(model.settingsStore.settings.pipelineKeepAlive))** after processing.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Slider(
-                        value: Binding(
-                            get: { model.settingsStore.settings.pipelineKeepAlive },
-                            set: { model.settingsStore.settings.pipelineKeepAlive = $0 }
-                        ),
-                        in: 0...600,
-                        step: 30
-                    )
-                    HStack {
-                        Text("Unload immediately").font(.caption2).foregroundStyle(.tertiary)
-                        Spacer()
-                        Text("10 minutes").font(.caption2).foregroundStyle(.tertiary)
+            sectionGroup("Transcription Model") {
+                SettingsCard {
+                    ForEach(Array(TranscriptionModel.allCases.enumerated()), id: \.offset) { index, version in
+                        CardRow(isLast: index == TranscriptionModel.allCases.count - 1) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(version.displayName)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(HeardTheme.Paper.ink)
+                                    Text(version == .v2
+                                         ? "Recommended for English meetings"
+                                         : "Beta — improved accuracy, may be slower")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(HeardTheme.Paper.mute)
+                                }
+                                Spacer()
+                                if model.settingsStore.settings.transcriptionModel == version {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(HeardTheme.Paper.accent)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture { model.setTranscriptionModel(version) }
+                        }
                     }
                 }
-                Text("Keeping models loaded speeds up back-to-back meetings but uses more RAM (~800 MB).")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            } header: {
-                Text("Meeting Transcription Keep-Alive")
             }
 
-            Section("Memory") {
-                Text("Force unload all cached models to free RAM/VRAM immediately.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Button(role: .destructive) {
-                    model.pipelineProcessor.unloadPipelineModels()
-                    model.dictationManager.unloadModels()
-                } label: {
-                    Label("Unload All Models", systemImage: "xmark.circle.fill")
+            sectionGroup("Models on Disk") {
+                SettingsCard {
+                    ForEach(Array(model.modelCatalog.statuses.enumerated()), id: \.offset) { index, item in
+                        CardRow(isLast: index == model.modelCatalog.statuses.count - 1) {
+                            ModelStatusRow(item: item, downloadManager: model.downloadManager)
+                        }
+                    }
                 }
-                .disabled(model.pipelineProcessor.isProcessing || model.isDictating)
+            }
+
+            sectionGroup("Meeting Transcription Keep-Alive") {
+                SettingsCard {
+                    CardRow {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Keep transcription models loaded for **\(keepAliveLabel(model.settingsStore.settings.pipelineKeepAlive))** after processing.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                            Slider(
+                                value: Binding(
+                                    get: { model.settingsStore.settings.pipelineKeepAlive },
+                                    set: { model.settingsStore.settings.pipelineKeepAlive = $0 }
+                                ),
+                                in: 0...600, step: 30
+                            )
+                            HStack {
+                                Text("Unload immediately")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                                Spacer()
+                                Text("10 minutes")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                            }
+                        }
+                    }
+                    CardRow(isLast: true) {
+                        Text("Keeping models loaded speeds up back-to-back meetings but uses ~800 MB RAM.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(HeardTheme.Paper.mute)
+                    }
+                }
             }
         }
-        .formStyle(.grouped)
     }
 
     // MARK: Speakers
 
     private var speakersSection: some View {
         VStack(spacing: 0) {
-            // Top toolbar area
             VStack(spacing: HeardTheme.Spacing.md) {
                 HStack(spacing: HeardTheme.Spacing.sm) {
                     Text("Your Name")
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 12))
+                        .foregroundStyle(HeardTheme.Paper.mute)
                     TextField("Used as speaker label in transcripts", text: settingsBinding(\.userName))
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 280)
@@ -907,30 +1293,33 @@ public struct SettingsView: View {
                 }
 
                 if !model.namingCandidates.isEmpty {
-                    VStack(alignment: .leading, spacing: HeardTheme.Spacing.sm) {
-                        Label("New speakers detected — name them", systemImage: "person.badge.plus")
-                            .font(.headline)
-                            .foregroundStyle(.orange)
-                        ForEach(model.namingCandidates) { candidate in
-                            NamingCandidateRow(candidate: candidate) { name in
-                                model.saveSpeakerName(candidate: candidate, name: name)
-                            }
-                        }
+                    HStack(spacing: 8) {
+                        Image(systemName: "person.badge.plus")
+                            .foregroundStyle(HeardTheme.Paper.warn)
+                            .font(.system(size: 12))
+                        Text("New speakers detected — open the speaker naming window to identify them")
+                            .font(.system(size: 12))
+                            .foregroundStyle(HeardTheme.Paper.warn)
+                        Spacer()
                     }
-                    .padding(HeardTheme.Spacing.md)
-                    .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: HeardTheme.Radius.card))
+                    .padding(12)
+                    .background(HeardTheme.Paper.warnSoft,
+                                in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
                 }
 
                 HStack(spacing: HeardTheme.Spacing.sm) {
                     HStack(spacing: 6) {
                         Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(HeardTheme.Paper.mute)
+                            .font(.system(size: 12))
                         TextField("Search speakers", text: $model.speakerFilter)
                             .textFieldStyle(.plain)
+                            .font(.system(size: 12))
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
-                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
+                    .background(HeardTheme.Paper.surfaceAlt,
+                                in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
                     .frame(maxWidth: 260)
 
                     Picker("Sort", selection: $model.speakerSortMode) {
@@ -944,21 +1333,20 @@ public struct SettingsView: View {
 
                     Spacer()
 
-                    Button("Merge Selected") {
-                        model.mergeSelectedSpeakers()
-                    }
-                    .disabled(model.mergeSelection.count != 2)
+                    Button("Merge Selected") { model.mergeSelectedSpeakers() }
+                        .disabled(model.mergeSelection.count != 2)
                 }
             }
             .padding(HeardTheme.Spacing.lg)
+            .background(HeardTheme.Paper.bg)
 
-            Divider()
+            HeardTheme.Paper.border.frame(height: 0.5)
 
             Table(model.filteredSpeakers, selection: $model.mergeSelection) {
                 TableColumn("Voice") { speaker in
                     SpeakerVoiceCell(speaker: speaker, controller: clipPlayer)
                 }
-                .width(min: 90, ideal: 110, max: 140)
+                .width(min: 80, ideal: 100, max: 130)
                 TableColumn("Name") { speaker in
                     InlineEditableText(value: speaker.name) { newValue in
                         model.renameSpeaker(id: speaker.id, to: newValue)
@@ -967,14 +1355,7 @@ public struct SettingsView: View {
                 TableColumn("Meetings") { speaker in
                     Text("\(speaker.meetingCount)").monospacedDigit()
                 }
-                TableColumn("Transcribed") { speaker in
-                    Text(formatDuration(speaker.totalSpeechDuration))
-                        .monospacedDigit()
-                }
-                TableColumn("Words") { speaker in
-                    Text(speaker.totalWordCount.formatted())
-                        .monospacedDigit()
-                }
+                .width(min: 60, ideal: 70, max: 90)
                 TableColumn("First Seen") { speaker in
                     Text(speaker.firstSeen.formatted(date: .abbreviated, time: .omitted))
                 }
@@ -991,58 +1372,88 @@ public struct SettingsView: View {
                 }
             }
         }
+        .background(HeardTheme.Paper.bg)
     }
 
     // MARK: About
 
     private var aboutSection: some View {
         VStack(spacing: 0) {
-            Spacer()
-            VStack(spacing: HeardTheme.Spacing.md) {
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 88, height: 88)
-
-                VStack(spacing: 2) {
-                    Text("Heard")
-                        .font(.system(.largeTitle, design: .default).weight(.semibold))
-                    Text("Version 0.1.0")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-
-                Text("Automatic meeting detection, dual-track recording,\non-device transcription and speaker diarization.")
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-                    .font(.callout)
-                    .padding(.top, 4)
-
-                HStack(spacing: HeardTheme.Spacing.sm) {
-                    AboutBadge(icon: "lock.shield", text: "On-Device")
-                    AboutBadge(icon: "icloud.slash", text: "No Cloud")
-                    AboutBadge(icon: "brain.head.profile", text: "No LLM")
-                }
-                .padding(.top, 4)
-
-                Text("Powered by FluidAudio · Parakeet TDT · Silero VAD · WeSpeaker")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 6)
+            LinearGradient(
+                colors: [Color(hex: "F0E7D5"), Color(hex: "E8DEC8")],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(height: 38)
+            .overlay(alignment: .bottom) {
+                HeardTheme.Paper.border.frame(height: 0.5)
             }
-            .padding(HeardTheme.Spacing.lg)
 
-            Spacer()
-            Divider()
-            Text("Direct Download Distribution")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .padding(.vertical, 10)
+            ScrollView {
+                VStack(spacing: 0) {
+                    Spacer().frame(height: 40)
+                    HeardMark(size: 72)
+                    VStack(spacing: 4) {
+                        Text("Heard")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(HeardTheme.Paper.ink)
+                        Text("Version 0.1.0")
+                            .font(.system(size: 11.5, design: .monospaced))
+                            .foregroundStyle(HeardTheme.Paper.mute)
+                    }
+                    .padding(.top, 20)
+
+                    Text("Automatic meeting detection, dual-track recording,\non-device transcription and speaker diarization.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(HeardTheme.Paper.ink2)
+                        .font(.system(size: 12))
+                        .padding(.top, 12)
+
+                    HStack(spacing: HeardTheme.Spacing.sm) {
+                        AboutBadge(icon: "lock.shield", text: "On-device")
+                        AboutBadge(icon: "icloud.slash", text: "No cloud")
+                        AboutBadge(icon: "brain.head.profile", text: "No LLM")
+                    }
+                    .padding(.top, 16)
+
+                    Text("Powered by FluidAudio · Parakeet TDT · Silero VAD · WeSpeaker")
+                        .font(.system(size: 11))
+                        .foregroundStyle(HeardTheme.Paper.mute)
+                        .padding(.top, 12)
+
+                    Spacer().frame(height: 40)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .background(HeardTheme.Paper.bg)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(HeardTheme.Paper.bg)
+    }
+
+    // MARK: Pane helpers
+
+    private func paneScroll<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+        }
+        .background(HeardTheme.Paper.bg)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: Helpers
+    private func sectionGroup<Content: View>(
+        _ label: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(text: label)
+            content()
+        }
+    }
 
     private func settingsBinding<Value>(_ keyPath: WritableKeyPath<AppSettings, Value>) -> Binding<Value> {
         Binding(
@@ -1059,19 +1470,6 @@ public struct SettingsView: View {
         if mins > 0 { return "\(mins)m" }
         return "\(secs)s"
     }
-
-    private func formatDuration(_ seconds: TimeInterval) -> String {
-        let totalMinutes = Int(seconds) / 60
-        if totalMinutes == 0 && seconds > 0 {
-            return "\(Int(seconds))s"
-        }
-        let hours = totalMinutes / 60
-        let minutes = totalMinutes % 60
-        if hours > 0 {
-            return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h"
-        }
-        return "\(minutes)m"
-    }
 }
 
 // MARK: - Model Status Row
@@ -1082,40 +1480,43 @@ private struct ModelStatusRow: View {
 
     var body: some View {
         HStack(spacing: HeardTheme.Spacing.md) {
-            Image(systemName: statusIcon)
-                .font(.system(size: 16))
-                .foregroundStyle(statusColor)
-                .frame(width: 22)
+            ZStack {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(statusBg)
+                    .frame(width: 28, height: 28)
+                Image(systemName: statusIcon)
+                    .font(.system(size: 13))
+                    .foregroundStyle(statusColor)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.modelKind.displayName(for: downloadManager.transcriptionModel))
-                    .font(.callout.weight(.medium))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(HeardTheme.Paper.ink)
 
                 if let progress = downloadManager.downloadProgress[item.modelKind] {
                     ProgressView(value: progress)
                     Text("\(Int(progress * 100))%")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 10))
+                        .foregroundStyle(HeardTheme.Paper.mute)
                         .monospacedDigit()
                 } else if let error = downloadManager.errors[item.modelKind] {
                     Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                        .font(.system(size: 11))
+                        .foregroundStyle(HeardTheme.Paper.bad)
                         .lineLimit(1)
                 } else {
                     Text(item.detail)
-                        .font(.caption)
-                        .foregroundStyle(item.availability == .ready ? .green : .secondary)
+                        .font(.system(size: 11))
+                        .foregroundStyle(item.availability == .ready ? HeardTheme.Paper.good : HeardTheme.Paper.mute)
                 }
             }
 
             Spacer()
 
             if item.availability == .notDownloaded && downloadManager.downloadProgress[item.modelKind] == nil {
-                Button("Download") {
-                    downloadManager.download(item.modelKind)
-                }
-                .controlSize(.small)
+                Button("Download") { downloadManager.download(item.modelKind) }
+                    .controlSize(.small)
             }
         }
         .padding(.vertical, 2)
@@ -1125,19 +1526,28 @@ private struct ModelStatusRow: View {
         if downloadManager.downloadProgress[item.modelKind] != nil { return "arrow.down.circle" }
         if downloadManager.errors[item.modelKind] != nil { return "exclamationmark.triangle" }
         switch item.availability {
-        case .ready: return "checkmark.circle.fill"
-        case .downloading: return "arrow.down.circle"
+        case .ready:         return "checkmark.circle.fill"
+        case .downloading:   return "arrow.down.circle"
         case .notDownloaded: return "arrow.down.to.line"
         }
     }
 
     private var statusColor: Color {
-        if downloadManager.downloadProgress[item.modelKind] != nil { return HeardTheme.accent }
-        if downloadManager.errors[item.modelKind] != nil { return .red }
+        if downloadManager.downloadProgress[item.modelKind] != nil { return HeardTheme.Paper.accent }
+        if downloadManager.errors[item.modelKind] != nil { return HeardTheme.Paper.bad }
         switch item.availability {
-        case .ready: return .green
-        case .downloading: return HeardTheme.accent
-        case .notDownloaded: return .secondary
+        case .ready:         return HeardTheme.Paper.good
+        case .downloading:   return HeardTheme.Paper.accent
+        case .notDownloaded: return HeardTheme.Paper.mute
+        }
+    }
+
+    private var statusBg: Color {
+        if downloadManager.errors[item.modelKind] != nil { return HeardTheme.Paper.badSoft }
+        switch item.availability {
+        case .ready:         return HeardTheme.Paper.goodSoft
+        case .downloading:   return HeardTheme.Paper.accentSoft
+        case .notDownloaded: return HeardTheme.Paper.surfaceAlt
         }
     }
 }
@@ -1151,43 +1561,39 @@ private struct PermissionRow: View {
     var body: some View {
         HStack(spacing: HeardTheme.Spacing.md) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(iconTint.opacity(0.14))
-                    .frame(width: 34, height: 34)
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(iconBg)
+                    .frame(width: 28, height: 28)
                 Image(systemName: iconName)
-                    .font(.system(size: 15))
+                    .font(.system(size: 14))
                     .foregroundStyle(iconTint)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(permission.title)
-                        .font(.callout.weight(.medium))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(HeardTheme.Paper.ink)
                     if permission.id == "microphone" || permission.id == "screenCapture" {
-                        Text("Required")
-                            .font(.system(size: 9, weight: .semibold))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(.red.opacity(0.12), in: Capsule())
-                            .foregroundStyle(.red)
+                        StatusPill(text: "Required",
+                                   fg: HeardTheme.Paper.bad,
+                                   bg: HeardTheme.Paper.badSoft)
                     }
                 }
                 Text(permission.purpose)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(HeardTheme.Paper.mute)
             }
 
             Spacer()
 
             VStack(alignment: .trailing, spacing: 4) {
-                Text(permission.state.badge)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(permission.state == .granted ? .green : .orange)
+                StatusPill(text: permission.state.badge, fg: pillFg, bg: pillBg)
                 if permission.state != .granted {
                     Button("Grant…") {
                         switch permission.id {
-                        case "microphone": model.permissionCenter.requestMicrophone()
-                        case "audioCapture": model.permissionCenter.requestAudioCapture()
+                        case "microphone":    model.permissionCenter.requestMicrophone()
+                        case "audioCapture":  model.permissionCenter.requestAudioCapture()
                         case "screenCapture": model.permissionCenter.openScreenCaptureSettings()
                         case "accessibility": model.permissionCenter.openAccessibilitySettings()
                         default: break
@@ -1202,16 +1608,36 @@ private struct PermissionRow: View {
 
     private var iconName: String {
         switch permission.id {
-        case "microphone": return "mic.fill"
-        case "audioCapture": return "speaker.wave.2.fill"
+        case "microphone":    return "mic.fill"
+        case "audioCapture":  return "speaker.wave.2.fill"
         case "screenCapture": return "rectangle.dashed.badge.record"
         case "accessibility": return "figure.stand"
-        default: return "lock.fill"
+        default:              return "lock.fill"
         }
     }
 
     private var iconTint: Color {
-        permission.state == .granted ? .green : HeardTheme.accent
+        permission.state == .granted ? HeardTheme.Paper.good : HeardTheme.Paper.accent
+    }
+
+    private var iconBg: Color {
+        permission.state == .granted ? HeardTheme.Paper.goodSoft : HeardTheme.Paper.accentSoft
+    }
+
+    private var pillFg: Color {
+        switch permission.state {
+        case .granted:     return HeardTheme.Paper.good
+        case .recommended: return HeardTheme.Paper.warn
+        case .unknown:     return HeardTheme.Paper.bad
+        }
+    }
+
+    private var pillBg: Color {
+        switch permission.state {
+        case .granted:     return HeardTheme.Paper.goodSoft
+        case .recommended: return HeardTheme.Paper.warnSoft
+        case .unknown:     return HeardTheme.Paper.badSoft
+        }
     }
 }
 
@@ -1224,12 +1650,12 @@ private struct AboutBadge: View {
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: icon).font(.caption2)
-            Text(text).font(.caption)
+            Text(text).font(.system(size: 11))
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(HeardTheme.Paper.mute)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(Color.primary.opacity(0.06), in: Capsule())
+        .background(HeardTheme.Paper.surfaceAlt, in: Capsule())
     }
 }
 
@@ -1242,22 +1668,21 @@ private struct HotkeyRecorderView: View {
     @State private var captured: HotkeyCombo? = nil
     @State private var monitorToken: Any? = nil
 
-    private enum ValidationKind {
-        case noModifier, forbidden, singleModifier
-    }
+    private enum ValidationKind { case noModifier, forbidden, singleModifier }
 
     var body: some View {
         VStack(spacing: HeardTheme.Spacing.lg) {
             Image(systemName: "keyboard")
                 .font(.system(size: 36))
-                .foregroundStyle(HeardTheme.accent)
+                .foregroundStyle(HeardTheme.Paper.accent)
 
             Text("Record Shortcut")
                 .font(.title2.weight(.semibold))
+                .foregroundStyle(HeardTheme.Paper.ink)
 
             Text("Press the key combination you want to use for dictation.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(HeardTheme.Paper.mute)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 280)
 
@@ -1267,28 +1692,28 @@ private struct HotkeyRecorderView: View {
                         .font(.system(.title3, design: .monospaced).weight(.semibold))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(HeardTheme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
-                        .foregroundStyle(HeardTheme.accent)
+                        .background(HeardTheme.Paper.accentSoft,
+                                    in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
+                        .foregroundStyle(HeardTheme.Paper.accent)
                 } else {
                     Text("Waiting for input…")
                         .font(.callout)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(HeardTheme.Paper.mute)
                         .padding(.vertical, 8)
                 }
             }
             .frame(height: 44)
 
-            // Validation feedback
             if let validation = captured.flatMap({ validate($0) }) {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: validation == .singleModifier
                           ? "exclamationmark.triangle.fill"
                           : "xmark.circle.fill")
                         .font(.caption)
-                        .foregroundStyle(validation == .singleModifier ? .orange : .red)
+                        .foregroundStyle(validation == .singleModifier ? HeardTheme.Paper.warn : HeardTheme.Paper.bad)
                     Text(validationMessage(validation))
                         .font(.caption)
-                        .foregroundStyle(validation == .singleModifier ? .orange : .red)
+                        .foregroundStyle(validation == .singleModifier ? HeardTheme.Paper.warn : HeardTheme.Paper.bad)
                         .multilineTextAlignment(.leading)
                 }
                 .frame(maxWidth: 280, alignment: .leading)
@@ -1312,6 +1737,7 @@ private struct HotkeyRecorderView: View {
         }
         .padding(HeardTheme.Spacing.xl)
         .frame(width: 360)
+        .background(HeardTheme.Paper.bg)
         .onAppear { startMonitoring() }
         .onDisappear { stopMonitoring() }
     }
@@ -1334,31 +1760,18 @@ private struct HotkeyRecorderView: View {
 
     private func validationMessage(_ kind: ValidationKind) -> String {
         switch kind {
-        case .noModifier:
-            return "A modifier key (⌘, ⌃, ⌥, or ⇧) is required."
-        case .forbidden:
-            return "This shortcut is reserved by macOS. Please choose another."
-        case .singleModifier:
-            return "Single-modifier shortcuts may conflict with app shortcuts."
+        case .noModifier:     return "A modifier key (⌘, ⌃, ⌥, or ⇧) is required."
+        case .forbidden:      return "This shortcut is reserved by macOS. Please choose another."
+        case .singleModifier: return "Single-modifier shortcuts may conflict with app shortcuts."
         }
     }
 
-    // Common macOS system shortcuts that should not be overridden.
     private func isForbiddenCombo(_ combo: HotkeyCombo) -> Bool {
         let blocked: [(UInt16, NSEvent.ModifierFlags)] = [
-            (48, .command),                     // ⌘Tab — app switcher
-            (49, .command),                     // ⌘Space — Spotlight
-            (49, [.command, .option]),           // ⌥⌘Space — alternate Spotlight
-            (49, .control),                     // ⌃Space — input source switch
-            (12, .command),                     // ⌘Q — Quit
-            (4,  .command),                     // ⌘H — Hide
-            (46, .command),                     // ⌘M — Minimize
-            (13, .command),                     // ⌘W — Close window
-            (43, .command),                     // ⌘, — Preferences
-            (50, .command),                     // ⌘` — cycle windows
-            (20, [.command, .shift]),            // ⌘⇧3 — screenshot
-            (21, [.command, .shift]),            // ⌘⇧4 — screenshot region
-            (22, [.command, .shift]),            // ⌘⇧5 — screenshot toolbar
+            (48, .command), (49, .command), (49, [.command, .option]),
+            (49, .control), (12, .command), (4, .command), (46, .command),
+            (13, .command), (43, .command), (50, .command),
+            (20, [.command, .shift]), (21, [.command, .shift]), (22, [.command, .shift]),
         ]
         return blocked.contains { keyCode, mods in
             combo.keyCode == keyCode && combo.modifierFlags == mods
@@ -1385,8 +1798,7 @@ private struct HotkeyRecorderView: View {
     }
 
     private func isModifierOnlyKeyCode(_ code: UInt16) -> Bool {
-        let modifierCodes: Set<UInt16> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-        return modifierCodes.contains(code)
+        Set<UInt16>([54, 55, 56, 57, 58, 59, 60, 61, 62, 63]).contains(code)
     }
 }
 
@@ -1429,6 +1841,7 @@ struct NamingCandidateRow: View {
         HStack(spacing: HeardTheme.Spacing.sm) {
             Text(candidate.temporaryName)
                 .font(.callout.weight(.medium))
+                .foregroundStyle(HeardTheme.Paper.ink2)
                 .frame(width: 140, alignment: .leading)
             TextField("Enter speaker name", text: $draft)
                 .textFieldStyle(.roundedBorder)
@@ -1463,28 +1876,34 @@ public struct SpeakerNamingView: View {
     public var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: HeardTheme.Spacing.sm) {
-                Image(systemName: "person.badge.plus")
-                    .font(.system(size: 30))
-                    .foregroundStyle(HeardTheme.accent)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(HeardTheme.Paper.accentSoft)
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "person.badge.plus")
+                        .font(.system(size: 22))
+                        .foregroundStyle(HeardTheme.Paper.accent)
+                }
 
                 Text("New Speakers Detected")
-                    .font(.title2.weight(.semibold))
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(HeardTheme.Paper.ink)
 
                 Text("Listen to each voice clip and enter their name. Unnamed speakers will be saved with generic labels.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(HeardTheme.Paper.mute)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
 
                 Text("Auto-saving in \(countdownSeconds)s")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(HeardTheme.Paper.warn)
                     .monospacedDigit()
             }
             .padding(.top, HeardTheme.Spacing.lg)
             .padding(.bottom, HeardTheme.Spacing.md)
 
-            Divider()
+            HeardTheme.Paper.borderSoft.frame(height: 0.5)
 
             ScrollView {
                 VStack(spacing: HeardTheme.Spacing.sm) {
@@ -1494,8 +1913,9 @@ public struct SpeakerNamingView: View {
                 }
                 .padding(HeardTheme.Spacing.lg)
             }
+            .background(HeardTheme.Paper.bg)
 
-            Divider()
+            HeardTheme.Paper.borderSoft.frame(height: 0.5)
 
             HStack {
                 Button("Skip All") {
@@ -1504,6 +1924,7 @@ public struct SpeakerNamingView: View {
                     dismissWindow(id: "speaker-naming")
                 }
                 .keyboardShortcut(.cancelAction)
+                .foregroundStyle(HeardTheme.Paper.ink2)
 
                 Spacer()
 
@@ -1516,8 +1937,11 @@ public struct SpeakerNamingView: View {
                 .buttonStyle(.borderedProminent)
             }
             .padding(HeardTheme.Spacing.lg)
+            .background(HeardTheme.Paper.surface)
         }
-        .frame(width: 540)
+        .frame(width: 560)
+        .background(HeardTheme.Paper.bg)
+        .preferredColorScheme(.light)
         .onAppear { startCountdown() }
         .onDisappear {
             stopAudio()
@@ -1539,12 +1963,15 @@ public struct SpeakerNamingView: View {
             VStack(alignment: .leading, spacing: HeardTheme.Spacing.xs) {
                 HStack(spacing: 6) {
                     Text(candidate.temporaryName)
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(HeardTheme.Paper.mute)
                     if let suggested = candidate.suggestedName {
-                        Text("(maybe \(suggested)?)")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                        Text("maybe \(suggested)?")
+                            .font(.system(size: 11))
+                            .foregroundStyle(HeardTheme.Paper.warn)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(HeardTheme.Paper.warnSoft, in: Capsule())
                     }
                 }
                 TextField(
@@ -1561,7 +1988,12 @@ public struct SpeakerNamingView: View {
                 .disabled(draftText(for: candidate).isEmpty)
         }
         .padding(HeardTheme.Spacing.md)
-        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: HeardTheme.Radius.card))
+        .background(HeardTheme.Paper.surface)
+        .clipShape(RoundedRectangle(cornerRadius: HeardTheme.Radius.card))
+        .overlay(
+            RoundedRectangle(cornerRadius: HeardTheme.Radius.card)
+                .stroke(HeardTheme.Paper.border, lineWidth: 0.5)
+        )
     }
 
     @ViewBuilder
@@ -1569,18 +2001,19 @@ public struct SpeakerNamingView: View {
         if candidate.audioClipURLs.isEmpty {
             ZStack {
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.secondary.opacity(0.14))
-                    .frame(width: 42, height: 42)
+                    .fill(HeardTheme.Paper.surfaceAlt)
+                    .frame(width: 38, height: 38)
                 Image(systemName: "play.slash")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 15))
+                    .foregroundStyle(HeardTheme.Paper.mute)
             }
             .help("No audio clip available")
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Samples")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 10, weight: .bold))
+                    .kerning(0.5)
+                    .foregroundStyle(HeardTheme.Paper.mute)
                 HStack(spacing: 4) {
                     ForEach(Array(candidate.audioClipURLs.enumerated()), id: \.offset) { index, url in
                         clipButton(candidateID: candidate.id, index: index, url: url)
@@ -1592,7 +2025,7 @@ public struct SpeakerNamingView: View {
 
     private func clipButton(candidateID: UUID, index: Int, url: URL) -> some View {
         let isPlaying = playingCandidateID == candidateID && playingClipIndex == index
-        let tint = isPlaying ? Color.red : HeardTheme.accent
+        let tint = isPlaying ? HeardTheme.Paper.bad : HeardTheme.Paper.accent
         return Button {
             togglePlayback(candidateID: candidateID, index: index, url: url)
         } label: {
@@ -1616,18 +2049,15 @@ public struct SpeakerNamingView: View {
 
     private func togglePlayback(candidateID: UUID, index: Int, url: URL) {
         if playingCandidateID == candidateID && playingClipIndex == index {
-            stopAudio()
-            return
+            stopAudio(); return
         }
         stopAudio()
-
         do {
             let player = try AVAudioPlayer(contentsOf: url)
             player.play()
             audioPlayer = player
             playingCandidateID = candidateID
             playingClipIndex = index
-
             Task {
                 try? await Task.sleep(for: .seconds(player.duration + 0.1))
                 if playingCandidateID == candidateID && playingClipIndex == index {
@@ -1657,8 +2087,8 @@ public struct SpeakerNamingView: View {
     }
 
     private func draftText(for candidate: NamingCandidate) -> String {
-        let text = drafts[candidate.id] ?? candidate.suggestedName ?? ""
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        (drafts[candidate.id] ?? candidate.suggestedName ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func saveSingle(_ candidate: NamingCandidate) {
@@ -1671,13 +2101,9 @@ public struct SpeakerNamingView: View {
     private func saveAll() {
         for candidate in model.namingCandidates {
             let name = draftText(for: candidate)
-            if !name.isEmpty {
-                model.saveSpeakerName(candidate: candidate, name: name)
-            }
+            if !name.isEmpty { model.saveSpeakerName(candidate: candidate, name: name) }
         }
-        if !model.namingCandidates.isEmpty {
-            model.skipNaming()
-        }
+        if !model.namingCandidates.isEmpty { model.skipNaming() }
     }
 
     // MARK: Countdown
@@ -1706,8 +2132,7 @@ final class SpeakerClipController: ObservableObject {
 
     func toggle(speakerID: UUID, clipIndex: Int, clipURL: URL) {
         if playingSpeakerID == speakerID && playingClipIndex == clipIndex {
-            stop()
-            return
+            stop(); return
         }
         stop()
         guard FileManager.default.fileExists(atPath: clipURL.path) else { return }
@@ -1745,7 +2170,7 @@ struct SpeakerVoiceCell: View {
     @ObservedObject var controller: SpeakerClipController
 
     private var availableClips: [(index: Int, url: URL)] {
-        speaker.audioClipURLs.enumerated().compactMap { (index, url) in
+        speaker.audioClipURLs.enumerated().compactMap { index, url in
             FileManager.default.fileExists(atPath: url.path) ? (index, url) : nil
         }
     }
@@ -1755,7 +2180,7 @@ struct SpeakerVoiceCell: View {
         if clips.isEmpty {
             Image(systemName: "play.slash")
                 .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(HeardTheme.Paper.mute)
                 .frame(width: 22, height: 20)
                 .help("No voice sample saved")
         } else {
@@ -1769,7 +2194,7 @@ struct SpeakerVoiceCell: View {
 
     private func clipButton(index: Int, url: URL) -> some View {
         let isPlaying = controller.playingSpeakerID == speaker.id && controller.playingClipIndex == index
-        let tint = isPlaying ? Color.red : HeardTheme.accent
+        let tint = isPlaying ? HeardTheme.Paper.bad : HeardTheme.Paper.accent
         return Button {
             controller.toggle(speakerID: speaker.id, clipIndex: index, clipURL: url)
         } label: {
@@ -1804,7 +2229,8 @@ struct FlowLayout<Data: RandomAccessCollection, ID: Hashable, Content: View>: Vi
     }
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), alignment: .leading)], alignment: .leading, spacing: 8) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), alignment: .leading)],
+                  alignment: .leading, spacing: 8) {
             ForEach(data, id: id, content: content)
         }
     }
