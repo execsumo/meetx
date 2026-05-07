@@ -912,26 +912,8 @@ public struct SettingsView: View {
                 SettingsCard {
                     let perms = model.permissionCenter.statuses
                     ForEach(Array(perms.enumerated()), id: \.offset) { index, perm in
-                        CardRow(isLast: index == perms.count - 1 && permissionCenter.isAccessibilityGranted) {
+                        CardRow(isLast: index == perms.count - 1) {
                             PermissionRow(permission: perm, model: model)
-                        }
-                    }
-                    if !permissionCenter.isAccessibilityGranted {
-                        CardRow(isLast: true) {
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(HeardTheme.Paper.warn)
-                                    .font(.system(size: 11))
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text("Accessibility permission is required for dictation text injection.")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(HeardTheme.Paper.mute)
-                                    Button("Grant Accessibility Access…") {
-                                        TextInjector.ensureAccessibility()
-                                    }
-                                    .controlSize(.small)
-                                }
-                            }
                         }
                     }
                 }
