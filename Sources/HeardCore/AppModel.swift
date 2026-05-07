@@ -94,9 +94,8 @@ public final class AppModel: ObservableObject {
         }
 
         // Apply dock icon visibility
-        if settingsStore.settings.showDockIcon {
-            NSApp.setActivationPolicy(.regular)
-        }
+        WindowActivationCoordinator.persistentDockIcon = settingsStore.settings.showDockIcon
+        WindowActivationCoordinator.syncPolicy()
 
         if settingsStore.settings.autoWatch {
             model.startWatching()
@@ -536,7 +535,8 @@ public var filteredSpeakers: [SpeakerProfile] {
 
     public func setDockIconVisible(_ visible: Bool) {
         settingsStore.settings.showDockIcon = visible
-        NSApp.setActivationPolicy(visible ? .regular : .accessory)
+        WindowActivationCoordinator.persistentDockIcon = visible
+        WindowActivationCoordinator.syncPolicy()
         objectWillChange.send()
     }
 

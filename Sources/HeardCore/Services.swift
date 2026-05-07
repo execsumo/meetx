@@ -1356,24 +1356,32 @@ public enum LaunchAtLogin {
 @MainActor
 public enum WindowActivationCoordinator {
     private static var owners: Set<String> = []
+    /// When true, the app stays in `.regular` mode even when all windows are closed.
+    public static var persistentDockIcon: Bool = false
 
-    /// Register that `owner` needs `.regular` activation policy. The first
-    /// registration promotes the app to `.regular` and activates it.
+    /// Register that `owner` needs `.regular` activation policy.
     public static func begin(_ owner: String) {
-        let wasEmpty = owners.isEmpty
         owners.insert(owner)
-        if wasEmpty {
-            NSApp.setActivationPolicy(.regular)
+        syncPolicy()
+        if owners.count == 1 {
             NSApp.activate(ignoringOtherApps: true)
         }
     }
 
-    /// Unregister `owner`. When the last owner leaves, the app reverts to
-    /// `.accessory` (menu-bar only, no Dock icon).
+    /// Unregister `owner`.
     public static func end(_ owner: String) {
         owners.remove(owner)
-        if owners.isEmpty {
-            NSApp.setActivationPolicy(.accessory)
+        syncPolicy()
+    }
+
+    /// Synchronize the app's activation policy based on open windows and persistent setting.
+    public static func syncPolicy() {
+        let needsRegular = persistentDockIcon || !owners.isEmpty
+        let current = NSApp.activationPolicy()
+        let target: NSApplication.ActivationPolicy = needsRegular ? .regular : .accessory
+        
+        if current != target {
+            NSApp.setActivationPolicy(target)
         }
     }
 }
