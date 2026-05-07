@@ -865,11 +865,11 @@ public struct SettingsView: View {
                 SettingsCard {
                     CardRow {
                         HStack(spacing: 8) {
-                            TextField("Add a term (min 3 chars)", text: $model.vocabularyDraft)
+                            TextField("Term or phrase (e.g. AI, flip phone)", text: $model.vocabularyDraft)
                                 .textFieldStyle(.roundedBorder)
                                 .onSubmit { model.addVocabularyTerm() }
                             Button("Add") { model.addVocabularyTerm() }
-                                .disabled(model.vocabularyDraft.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
+                                .disabled(model.vocabularyDraft.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
                         }
                     }
                     if !model.settingsStore.settings.customVocabulary.isEmpty {
@@ -894,7 +894,7 @@ public struct SettingsView: View {
                         }
                     }
                     CardRow(isLast: true) {
-                        Text("\(model.settingsStore.settings.customVocabulary.count) / 50 terms")
+                        Text("\(model.settingsStore.settings.customVocabulary.count) / 50 entries")
                             .font(.system(size: 11))
                             .foregroundStyle(HeardTheme.Paper.mute)
                     }

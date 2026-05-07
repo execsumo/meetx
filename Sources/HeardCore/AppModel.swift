@@ -472,7 +472,7 @@ public var filteredSpeakers: [SpeakerProfile] {
 
     public func addVocabularyTerm() {
         let term = vocabularyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard term.count >= 3 else { return }
+        guard term.count >= 2 else { return }
         guard settingsStore.settings.customVocabulary.count < 50 else { return }
         guard !settingsStore.settings.customVocabulary.contains(where: { $0.caseInsensitiveCompare(term) == .orderedSame }) else { return }
         settingsStore.settings.customVocabulary.append(term)
