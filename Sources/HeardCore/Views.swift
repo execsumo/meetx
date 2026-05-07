@@ -853,6 +853,27 @@ public struct SettingsView: View {
                 }
             }
 
+            sectionGroup("Language") {
+                SettingsCard {
+                    CardRow(isLast: true) {
+                        HStack {
+                            Text("Supported Languages")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                            Spacer()
+                            Picker("", selection: settingsBinding(\.transcriptionModel)) {
+                                ForEach(TranscriptionModel.allCases) { version in
+                                    Text(version.displayName).tag(version)
+                                }
+                            }
+                            .labelsHidden()
+                            .controlSize(.small)
+                            .frame(maxWidth: 260)
+                        }
+                    }
+                }
+            }
+
             sectionGroup("Output") {
                 SettingsCard {
                     CardRow {
@@ -873,7 +894,7 @@ public struct SettingsView: View {
                                 .controlSize(.small)
                         }
                     }
-                    CardRow {
+                    CardRow(isLast: true) {
                         HStack {
                             Text("Filename Format")
                                 .font(.system(size: 12, weight: .medium))
@@ -882,22 +903,6 @@ public struct SettingsView: View {
                             Picker("", selection: settingsBinding(\.filenameFormat)) {
                                 ForEach(FilenameFormat.allCases) { format in
                                     Text(format.displayName).tag(format)
-                                }
-                            }
-                            .labelsHidden()
-                            .controlSize(.small)
-                            .frame(maxWidth: 260)
-                        }
-                    }
-                    CardRow(isLast: true) {
-                        HStack {
-                            Text("Supported Languages")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(HeardTheme.Paper.ink)
-                            Spacer()
-                            Picker("", selection: settingsBinding(\.transcriptionModel)) {
-                                ForEach(TranscriptionModel.allCases) { version in
-                                    Text(version.displayName).tag(version)
                                 }
                             }
                             .labelsHidden()
