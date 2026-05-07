@@ -819,7 +819,6 @@ public struct SettingsView: View {
                             Spacer()
                             TextField("Used as speaker label in transcripts", text: settingsBinding(\.userName))
                                 .textFieldStyle(.roundedBorder)
-                                .multilineTextAlignment(.trailing)
                                 .frame(maxWidth: 220)
                         }
                     }
@@ -871,7 +870,8 @@ public struct SettingsView: View {
                                 }
                             }
                             .labelsHidden()
-                            .frame(maxWidth: 200)
+                            .controlSize(.small)
+                            .frame(maxWidth: 260)
                         }
                     }
                 }
