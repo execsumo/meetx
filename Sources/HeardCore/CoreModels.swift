@@ -337,6 +337,8 @@ public struct AppSettings: Codable, Equatable {
     public var filenameFormat: FilenameFormat
     /// Hotkey to open the in-meeting note composer. Active only while a meeting is recording.
     public var meetingNoteHotkey: HotkeyCombo
+    /// Whether to show the app icon in the Dock.
+    public var showDockIcon: Bool
 
     public static let `default` = AppSettings(
         userName: "",
@@ -356,7 +358,8 @@ public struct AppSettings: Codable, Equatable {
         transcriptionModel: .v2,
         showDictationHUD: false,
         filenameFormat: .isoDate,
-        meetingNoteHotkey: .meetingNoteDefault
+        meetingNoteHotkey: .meetingNoteDefault,
+        showDockIcon: false
     )
 
     public init(
@@ -374,7 +377,8 @@ public struct AppSettings: Codable, Equatable {
         transcriptionModel: TranscriptionModel = .v2,
         showDictationHUD: Bool = false,
         filenameFormat: FilenameFormat = .isoDate,
-        meetingNoteHotkey: HotkeyCombo = .meetingNoteDefault
+        meetingNoteHotkey: HotkeyCombo = .meetingNoteDefault,
+        showDockIcon: Bool = false
     ) {
         self.userName = userName
         self.launchAtLogin = launchAtLogin
@@ -391,6 +395,7 @@ public struct AppSettings: Codable, Equatable {
         self.showDictationHUD = showDictationHUD
         self.filenameFormat = filenameFormat
         self.meetingNoteHotkey = meetingNoteHotkey
+        self.showDockIcon = showDockIcon
     }
 }
 

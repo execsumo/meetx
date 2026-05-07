@@ -849,7 +849,15 @@ public struct SettingsView: View {
                             set: { model.setLaunchAtLogin($0) }
                         )
                     )
-                    ToggleRow(title: "Auto-Detect & Record Meetings", isLast: true, isOn: settingsBinding(\.autoWatch))
+                    ToggleRow(title: "Auto-Detect & Record Meetings", isOn: settingsBinding(\.autoWatch))
+                    ToggleRow(
+                        title: "Show Dock Icon",
+                        isLast: true,
+                        isOn: Binding(
+                            get: { model.settingsStore.settings.showDockIcon },
+                            set: { model.setDockIconVisible($0) }
+                        )
+                    )
                 }
             }
 

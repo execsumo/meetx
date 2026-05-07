@@ -93,6 +93,11 @@ public final class AppModel: ObservableObject {
             LaunchAtLogin.setEnabled(settingsStore.settings.launchAtLogin)
         }
 
+        // Apply dock icon visibility
+        if settingsStore.settings.showDockIcon {
+            NSApp.setActivationPolicy(.regular)
+        }
+
         if settingsStore.settings.autoWatch {
             model.startWatching()
         }
@@ -527,6 +532,12 @@ public var filteredSpeakers: [SpeakerProfile] {
     public func setLaunchAtLogin(_ enabled: Bool) {
         settingsStore.settings.launchAtLogin = enabled
         LaunchAtLogin.setEnabled(enabled)
+    }
+
+    public func setDockIconVisible(_ visible: Bool) {
+        settingsStore.settings.showDockIcon = visible
+        NSApp.setActivationPolicy(visible ? .regular : .accessory)
+        objectWillChange.send()
     }
 
     public func openSettings(tab: SettingsTab?) {
