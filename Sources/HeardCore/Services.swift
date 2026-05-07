@@ -1436,23 +1436,35 @@ public enum TranscriptWriter {
         }
     }
 
-    public static func write(document: TranscriptDocument, outputDirectory: URL, dateFormat: TranscriptDateFormat = .short) throws -> URL {
+    public static func write(document: TranscriptDocument, outputDirectory: URL, filenameFormat: FilenameFormat = .shortDate) throws -> URL {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         
-        let formatter = DateFormatter()
-        switch dateFormat {
-        case .short:
-            formatter.dateFormat = "yyMMdd"
-        case .iso:
-            formatter.dateFormat = "yyyy-MM-dd"
-        }
-        let prefix = formatter.string(from: document.startTime)
         let title = document.title.sanitizedFileName()
-        var candidate = outputDirectory.appendingPathComponent("\(prefix)_\(title).md")
+        let formatter = DateFormatter()
+        let filenameStr: String
+        
+        switch filenameFormat {
+        case .shortDate:
+            formatter.dateFormat = "yyMMdd"
+            filenameStr = "\(formatter.string(from: document.startTime))_\(title)"
+        case .isoDate:
+            formatter.dateFormat = "yyyy-MM-dd"
+            filenameStr = "\(formatter.string(from: document.startTime))_\(title)"
+        case .nameFirstShort:
+            formatter.dateFormat = "yyMMdd"
+            filenameStr = "\(title)_\(formatter.string(from: document.startTime))"
+        case .nameFirstIso:
+            formatter.dateFormat = "yyyy-MM-dd"
+            filenameStr = "\(title)_\(formatter.string(from: document.startTime))"
+        case .nameOnly:
+            filenameStr = title
+        }
+        
+        var candidate = outputDirectory.appendingPathComponent("\(filenameStr).md")
         var suffix = 2
 
         while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = outputDirectory.appendingPathComponent("\(prefix)_\(title)_\(suffix).md")
+            candidate = outputDirectory.appendingPathComponent("\(filenameStr)_\(suffix).md")
             suffix += 1
         }
 
@@ -1669,7 +1681,7 @@ public final class PipelineProcessor: ObservableObject {
         // Default keepAlive is 0: unload immediately. Back-to-back meetings don't
         // cause rapid reloads because meeting 2 records while meeting 1's pipeline
         // runs — the gap before reload is always at least meeting 2's remaining duration.
-        let keepAlive = settingsStore.settings.pipelineKeepAlive
+        let keepAlive = TimeInterval(settingsStore.settings.pipelineKeepAlive * 60)
         if keepAlive > 0 {
             scheduleModelUnload(after: keepAlive)
         } else {
@@ -1811,7 +1823,7 @@ public final class PipelineProcessor: ObservableObject {
             let outputURL = try TranscriptWriter.write(
                 document: transcript,
                 outputDirectory: outputDirectory,
-                dateFormat: settingsStore.settings.transcriptDateFormat
+                filenameFormat: settingsStore.settings.filenameFormat
             )
 
             job.transcriptPath = outputURL

@@ -139,10 +139,27 @@ public final class SettingsStore: ObservableObject {
             formattingCommands = decoded
         }
 
-        var transcriptDateFormat = base.transcriptDateFormat
-        if let formatString = defaults.string(forKey: "transcriptDateFormat"),
-           let decoded = TranscriptDateFormat(rawValue: formatString) {
-            transcriptDateFormat = decoded
+        var filenameFormat = base.filenameFormat
+        if let formatString = defaults.string(forKey: "filenameFormat"),
+           let decoded = FilenameFormat(rawValue: formatString) {
+            filenameFormat = decoded
+        }
+
+        var dictationKeepAlive = base.dictationKeepAlive
+        if let val = defaults.object(forKey: "dictationKeepAlive") as? NSNumber {
+            // Assume any value >= 30 is old seconds-based format
+            dictationKeepAlive = val.doubleValue >= 30 ? Int(val.doubleValue / 60) : val.intValue
+        }
+
+        var pipelineKeepAlive = base.pipelineKeepAlive
+        if let val = defaults.object(forKey: "pipelineKeepAlive") as? NSNumber {
+            pipelineKeepAlive = val.doubleValue >= 30 ? Int(val.doubleValue / 60) : val.intValue
+        }
+
+        var transcriptionModel = base.transcriptionModel
+        if let modelString = defaults.string(forKey: "transcriptionModel"),
+           let decoded = TranscriptionModel(rawValue: modelString) {
+            transcriptionModel = decoded
         }
 
         settings = AppSettings(
@@ -155,7 +172,12 @@ public final class SettingsStore: ObservableObject {
             developerMode: defaults.object(forKey: "developerMode") as? Bool ?? base.developerMode,
             dictationEnabled: defaults.object(forKey: "dictationEnabled") as? Bool ?? base.dictationEnabled,
             dictationHotkey: hotkey,
-            transcriptDateFormat: transcriptDateFormat,
+            pushToTalk: defaults.object(forKey: "pushToTalk") as? Bool ?? base.pushToTalk,
+            dictationKeepAlive: dictationKeepAlive,
+            pipelineKeepAlive: pipelineKeepAlive,
+            transcriptionModel: transcriptionModel,
+            showDictationHUD: defaults.object(forKey: "showDictationHUD") as? Bool ?? base.showDictationHUD,
+            filenameFormat: filenameFormat,
             meetingNoteHotkey: meetingNoteHotkey
         )
     }
@@ -171,7 +193,12 @@ public final class SettingsStore: ObservableObject {
         }
         defaults.set(settings.developerMode, forKey: "developerMode")
         defaults.set(settings.dictationEnabled, forKey: "dictationEnabled")
-        defaults.set(settings.transcriptDateFormat.rawValue, forKey: "transcriptDateFormat")
+        defaults.set(settings.filenameFormat.rawValue, forKey: "filenameFormat")
+        defaults.set(settings.pushToTalk, forKey: "pushToTalk")
+        defaults.set(settings.dictationKeepAlive, forKey: "dictationKeepAlive")
+        defaults.set(settings.pipelineKeepAlive, forKey: "pipelineKeepAlive")
+        defaults.set(settings.transcriptionModel.rawValue, forKey: "transcriptionModel")
+        defaults.set(settings.showDictationHUD, forKey: "showDictationHUD")
         if let hotkeyData = try? JSONEncoder().encode(settings.dictationHotkey) {
             defaults.set(hotkeyData, forKey: "dictationHotkey")
         }

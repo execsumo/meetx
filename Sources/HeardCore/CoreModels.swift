@@ -284,16 +284,22 @@ public enum SpeakerSortMode: String, CaseIterable, Identifiable {
     }
 }
 
-public enum TranscriptDateFormat: String, Codable, CaseIterable, Identifiable {
-    case short = "YYMMDD"
-    case iso = "YYYY-MM-DD"
+public enum FilenameFormat: String, Codable, CaseIterable, Identifiable {
+    case shortDate = "YYMMDD_Name"
+    case isoDate = "YYYY-MM-DD_Name"
+    case nameFirstShort = "Name_YYMMDD"
+    case nameFirstIso = "Name_YYYY-MM-DD"
+    case nameOnly = "Name"
 
     public var id: String { rawValue }
 
     public var displayName: String {
         switch self {
-        case .short: return "Short (YYMMDD)"
-        case .iso: return "ISO (YYYY-MM-DD)"
+        case .shortDate: return "YYMMDD_MeetingName"
+        case .isoDate: return "YYYY-MM-DD_MeetingName"
+        case .nameFirstShort: return "MeetingName_YYMMDD"
+        case .nameFirstIso: return "MeetingName_YYYY-MM-DD"
+        case .nameOnly: return "MeetingName"
         }
     }
 }
@@ -321,16 +327,16 @@ public struct AppSettings: Codable, Equatable {
     public var dictationEnabled: Bool
     public var dictationHotkey: HotkeyCombo
     public var pushToTalk: Bool
-    /// How long to keep dictation models loaded after stopping (seconds). 0 = unload immediately.
-    public var dictationKeepAlive: TimeInterval
-    /// How long to keep transcription/diarization models loaded after pipeline processing (seconds). 0 = unload immediately.
-    public var pipelineKeepAlive: TimeInterval
+    /// How long to keep dictation models loaded after stopping (minutes). 0 = unload immediately.
+    public var dictationKeepAlive: Int
+    /// How long to keep transcription/diarization models loaded after pipeline processing (minutes). 0 = unload immediately.
+    public var pipelineKeepAlive: Int
     /// Which Parakeet model version to use for transcription (pipeline + dictation).
     public var transcriptionModel: TranscriptionModel
     /// Show a floating HUD while dictation is active (opt-in).
     public var showDictationHUD: Bool
-    /// Date format used for the transcript filename.
-    public var transcriptDateFormat: TranscriptDateFormat
+    /// Format used for the transcript filename.
+    public var filenameFormat: FilenameFormat
     /// Hotkey to open the in-meeting note composer. Active only while a meeting is recording.
     public var meetingNoteHotkey: HotkeyCombo
 
@@ -349,11 +355,11 @@ public struct AppSettings: Codable, Equatable {
         dictationEnabled: false,
         dictationHotkey: .default,
         pushToTalk: false,
-        dictationKeepAlive: 120,
+        dictationKeepAlive: 2,
         pipelineKeepAlive: 0,
         transcriptionModel: .v2,
         showDictationHUD: false,
-        transcriptDateFormat: .short,
+        filenameFormat: .shortDate,
         meetingNoteHotkey: .meetingNoteDefault
     )
 
@@ -368,11 +374,11 @@ public struct AppSettings: Codable, Equatable {
         dictationEnabled: Bool = false,
         dictationHotkey: HotkeyCombo = .default,
         pushToTalk: Bool = false,
-        dictationKeepAlive: TimeInterval = 120,
-        pipelineKeepAlive: TimeInterval = 0,
+        dictationKeepAlive: Int = 2,
+        pipelineKeepAlive: Int = 0,
         transcriptionModel: TranscriptionModel = .v2,
         showDictationHUD: Bool = false,
-        transcriptDateFormat: TranscriptDateFormat = .short,
+        filenameFormat: FilenameFormat = .shortDate,
         meetingNoteHotkey: HotkeyCombo = .meetingNoteDefault
     ) {
         self.userName = userName
@@ -389,7 +395,7 @@ public struct AppSettings: Codable, Equatable {
         self.pipelineKeepAlive = pipelineKeepAlive
         self.transcriptionModel = transcriptionModel
         self.showDictationHUD = showDictationHUD
-        self.transcriptDateFormat = transcriptDateFormat
+        self.filenameFormat = filenameFormat
         self.meetingNoteHotkey = meetingNoteHotkey
     }
 }
@@ -402,8 +408,8 @@ public enum TranscriptionModel: String, Codable, CaseIterable, Identifiable, Sen
 
     public var displayName: String {
         switch self {
-        case .v2: return "Parakeet V2 — English-optimized"
-        case .v3: return "Parakeet V3 — Latest"
+        case .v2: return "English (Optimized)"
+        case .v3: return "European Languages (Beta)"
         }
     }
 
@@ -513,9 +519,10 @@ public struct TranscriptDocument {
 
 public enum SettingsTab: String, CaseIterable, Identifiable {
     case general
+    case transcription
     case dictation
     case speakers
-    case models
+    case advanced
     case about
 
     public var id: String { rawValue }
@@ -523,9 +530,10 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
     public var label: String {
         switch self {
         case .general: return "General"
+        case .transcription: return "Transcription"
         case .dictation: return "Dictation"
-        case .models: return "Models"
         case .speakers: return "Speakers"
+        case .advanced: return "Advanced"
         case .about: return "About"
         }
     }
@@ -533,9 +541,10 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
     public var icon: String {
         switch self {
         case .general: return "gearshape"
+        case .transcription: return "waveform.and.mic"
         case .dictation: return "mic.badge.plus"
-        case .models: return "cpu"
         case .speakers: return "person.3"
+        case .advanced: return "cpu"
         case .about: return "info.circle"
         }
     }

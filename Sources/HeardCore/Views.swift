@@ -794,11 +794,12 @@ public struct SettingsView: View {
     private var detailPane: some View {
         Group {
             switch model.selectedSettingsTab {
-            case .general:   generalSection
-            case .dictation: dictationSection
-            case .models:    modelsSection
-            case .speakers:  speakersSection
-            case .about:     aboutSection
+            case .general:       generalSection
+            case .transcription: transcriptionSection
+            case .dictation:     dictationSection
+            case .speakers:      speakersSection
+            case .advanced:      advancedSection
+            case .about:         aboutSection
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -808,6 +809,22 @@ public struct SettingsView: View {
 
     private var generalSection: some View {
         paneScroll {
+            sectionGroup("Profile") {
+                SettingsCard {
+                    CardRow(isLast: true) {
+                        HStack(spacing: HeardTheme.Spacing.sm) {
+                            Text("Your Name")
+                                .font(.system(size: 12))
+                                .foregroundStyle(HeardTheme.Paper.mute)
+                            TextField("Used as speaker label in transcripts", text: settingsBinding(\.userName))
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 280)
+                            Spacer()
+                        }
+                    }
+                }
+            }
+
             sectionGroup("Behavior") {
                 SettingsCard {
                     ToggleRow(
@@ -817,13 +834,43 @@ public struct SettingsView: View {
                             set: { model.setLaunchAtLogin($0) }
                         )
                     )
-                    ToggleRow(title: "Auto-Watch on Launch", isOn: settingsBinding(\.autoWatch))
-                    ToggleRow(
-                        title: "Developer Mode",
-                        subtitle: "Shows simulate meeting buttons for testing",
-                        isLast: true,
-                        isOn: settingsBinding(\.developerMode)
-                    )
+                    ToggleRow(title: "Auto-Watch on Launch", isLast: true, isOn: settingsBinding(\.autoWatch))
+                }
+            }
+
+            sectionGroup("Output Folder") {
+                SettingsCard {
+                    CardRow {
+                        Text(model.settingsStore.settings.outputDirectory)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(HeardTheme.Paper.mute)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    CardRow {
+                        HStack(spacing: 8) {
+                            Button("Choose…") { model.chooseOutputDirectory() }
+                            Button("Reset") { model.chooseDefaultOutputDirectory() }
+                            Button("Open in Finder") { model.openOutputDirectory() }
+                            Spacer()
+                        }
+                    }
+                    CardRow(isLast: true) {
+                        HStack {
+                            Text("Filename Format")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                            Spacer()
+                            Picker("", selection: settingsBinding(\.filenameFormat)) {
+                                ForEach(FilenameFormat.allCases) { format in
+                                    Text(format.displayName).tag(format)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(maxWidth: 200)
+                        }
+                    }
                 }
             }
 
@@ -837,29 +884,32 @@ public struct SettingsView: View {
                     }
                 }
             }
+        }
+    }
 
-            sectionGroup("Meeting Notes") {
+    // MARK: Transcription
+
+    private var transcriptionSection: some View {
+        paneScroll {
+            sectionGroup("Language Support") {
                 SettingsCard {
-                    CardRow(isLast: true) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("In-Meeting Note Hotkey")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(HeardTheme.Paper.ink)
-                                Text("Press during a meeting to type a note inserted into the transcript, marked as supplemental.")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(HeardTheme.Paper.mute)
-                                    .fixedSize(horizontal: false, vertical: true)
+                    ForEach(Array(TranscriptionModel.allCases.enumerated()), id: \.offset) { index, version in
+                        CardRow(isLast: index == TranscriptionModel.allCases.count - 1) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(version.displayName)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(HeardTheme.Paper.ink)
+                                }
+                                Spacer()
+                                if model.settingsStore.settings.transcriptionModel == version {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(HeardTheme.Paper.accent)
+                                }
                             }
-                            Spacer()
-                            Text(model.settingsStore.settings.meetingNoteHotkey.displayString)
-                                .font(.system(size: 11, design: .monospaced).weight(.medium))
-                                .foregroundStyle(HeardTheme.Paper.ink)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(HeardTheme.Paper.surfaceAlt,
-                                            in: RoundedRectangle(cornerRadius: 5))
-                            Button("Record…") { isRecordingNoteHotkey = true }
+                            .contentShape(Rectangle())
+                            .onTapGesture { model.setTranscriptionModel(version) }
                         }
                     }
                 }
@@ -905,37 +955,28 @@ public struct SettingsView: View {
                 }
             }
 
-            sectionGroup("Output Folder") {
+            sectionGroup("Meeting Notes") {
                 SettingsCard {
-                    CardRow {
-                        Text(model.settingsStore.settings.outputDirectory)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(HeardTheme.Paper.mute)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    CardRow {
-                        HStack(spacing: 8) {
-                            Button("Choose…") { model.chooseOutputDirectory() }
-                            Button("Reset") { model.chooseDefaultOutputDirectory() }
-                            Button("Open in Finder") { model.openOutputDirectory() }
-                            Spacer()
-                        }
-                    }
                     CardRow(isLast: true) {
                         HStack {
-                            Text("Filename Date Format")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(HeardTheme.Paper.ink)
-                            Spacer()
-                            Picker("", selection: settingsBinding(\.transcriptDateFormat)) {
-                                ForEach(TranscriptDateFormat.allCases) { format in
-                                    Text(format.displayName).tag(format)
-                                }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("In-Meeting Note Hotkey")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(HeardTheme.Paper.ink)
+                                Text("Press during a meeting to type a note inserted into the transcript, marked as supplemental.")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            .labelsHidden()
-                            .frame(maxWidth: 200)
+                            Spacer()
+                            Text(model.settingsStore.settings.meetingNoteHotkey.displayString)
+                                .font(.system(size: 11, design: .monospaced).weight(.medium))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(HeardTheme.Paper.surfaceAlt,
+                                            in: RoundedRectangle(cornerRadius: 5))
+                            Button("Record…") { isRecordingNoteHotkey = true }
                         }
                     }
                 }
@@ -1079,44 +1120,6 @@ public struct SettingsView: View {
                 }
             }
 
-            sectionGroup("Model Keep-Alive") {
-                SettingsCard {
-                    CardRow {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Keep dictation model loaded for **\(keepAliveLabel(model.settingsStore.settings.dictationKeepAlive))** after stopping.")
-                                .font(.system(size: 12))
-                                .foregroundStyle(HeardTheme.Paper.ink)
-                            Slider(
-                                value: Binding(
-                                    get: { model.settingsStore.settings.dictationKeepAlive },
-                                    set: { model.settingsStore.settings.dictationKeepAlive = $0 }
-                                ),
-                                in: 0...600, step: 30
-                            )
-                            HStack {
-                                Text("Unload immediately")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(HeardTheme.Paper.mute)
-                                Spacer()
-                                Text("10 minutes")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(HeardTheme.Paper.mute)
-                            }
-                        }
-                    }
-                    CardRow(isLast: true) {
-                        HStack {
-                            Text("~800 MB RAM while loaded")
-                                .font(.system(size: 11))
-                                .foregroundStyle(HeardTheme.Paper.mute)
-                            Spacer()
-                            Button("Unload Now") { model.dictationManager.unloadModels() }
-                                .disabled(model.isDictating)
-                        }
-                    }
-                }
-            }
-
             if model.isDictating {
                 sectionGroup("Status") {
                     SettingsCard {
@@ -1159,143 +1162,11 @@ public struct SettingsView: View {
         }
     }
 
-    // MARK: Models
-
-    private var modelsSection: some View {
-        paneScroll {
-            // Hero card (dark gradient)
-            let readyCount = model.modelCatalog.statuses.filter { $0.availability == .ready }.count
-            let totalCount = model.modelCatalog.statuses.count
-
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(readyCount) of \(totalCount) models ready")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(HeardTheme.Paper.recordingInk)
-                    Text(model.downloadManager.allBatchModelsReady
-                         ? "Ready to transcribe"
-                         : "Some models need downloading")
-                        .font(.system(size: 11))
-                        .foregroundStyle(HeardTheme.Paper.recordingInk.opacity(0.65))
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 6) {
-                    if !model.downloadManager.allBatchModelsReady {
-                        Button("Download Missing") {
-                            model.downloadManager.downloadAllModels()
-                        }
-                        .buttonStyle(HeroButtonStyle())
-                    }
-                    Button("Unload All") {
-                        model.pipelineProcessor.unloadPipelineModels()
-                        model.dictationManager.unloadModels()
-                    }
-                    .buttonStyle(HeroButtonStyle(isDanger: true))
-                    .disabled(model.pipelineProcessor.isProcessing || model.isDictating)
-                }
-            }
-            .padding(14)
-            .background(
-                LinearGradient(
-                    colors: [Color(hex: "2E3338"), Color(hex: "1C2024")],
-                    startPoint: .top, endPoint: .bottom
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: HeardTheme.Radius.card))
-            .overlay(
-                RoundedRectangle(cornerRadius: HeardTheme.Radius.card)
-                    .stroke(Color(hex: "3A3F47"), lineWidth: 0.5)
-            )
-
-            sectionGroup("Transcription Model") {
-                SettingsCard {
-                    ForEach(Array(TranscriptionModel.allCases.enumerated()), id: \.offset) { index, version in
-                        CardRow(isLast: index == TranscriptionModel.allCases.count - 1) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(version.displayName)
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundStyle(HeardTheme.Paper.ink)
-                                    Text(version == .v2
-                                         ? "Recommended for English meetings"
-                                         : "Beta — improved accuracy, may be slower")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(HeardTheme.Paper.mute)
-                                }
-                                Spacer()
-                                if model.settingsStore.settings.transcriptionModel == version {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(HeardTheme.Paper.accent)
-                                }
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture { model.setTranscriptionModel(version) }
-                        }
-                    }
-                }
-            }
-
-            sectionGroup("Models on Disk") {
-                SettingsCard {
-                    ForEach(Array(model.modelCatalog.statuses.enumerated()), id: \.offset) { index, item in
-                        CardRow(isLast: index == model.modelCatalog.statuses.count - 1) {
-                            ModelStatusRow(item: item, downloadManager: model.downloadManager)
-                        }
-                    }
-                }
-            }
-
-            sectionGroup("Meeting Transcription Keep-Alive") {
-                SettingsCard {
-                    CardRow {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Keep transcription models loaded for **\(keepAliveLabel(model.settingsStore.settings.pipelineKeepAlive))** after processing.")
-                                .font(.system(size: 12))
-                                .foregroundStyle(HeardTheme.Paper.ink)
-                            Slider(
-                                value: Binding(
-                                    get: { model.settingsStore.settings.pipelineKeepAlive },
-                                    set: { model.settingsStore.settings.pipelineKeepAlive = $0 }
-                                ),
-                                in: 0...600, step: 30
-                            )
-                            HStack {
-                                Text("Unload immediately")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(HeardTheme.Paper.mute)
-                                Spacer()
-                                Text("10 minutes")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(HeardTheme.Paper.mute)
-                            }
-                        }
-                    }
-                    CardRow(isLast: true) {
-                        Text("Keeping models loaded speeds up back-to-back meetings but uses ~800 MB RAM.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(HeardTheme.Paper.mute)
-                    }
-                }
-            }
-        }
-    }
-
     // MARK: Speakers
 
     private var speakersSection: some View {
         VStack(spacing: 0) {
             VStack(spacing: HeardTheme.Spacing.md) {
-                HStack(spacing: HeardTheme.Spacing.sm) {
-                    Text("Your Name")
-                        .font(.system(size: 12))
-                        .foregroundStyle(HeardTheme.Paper.mute)
-                    TextField("Used as speaker label in transcripts", text: settingsBinding(\.userName))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 280)
-                    Spacer()
-                }
-
                 if !model.namingCandidates.isEmpty {
                     HStack(spacing: 8) {
                         Image(systemName: "person.badge.plus")
@@ -1377,6 +1248,148 @@ public struct SettingsView: View {
             }
         }
         .background(HeardTheme.Paper.bg)
+    }
+
+    // MARK: Advanced
+
+    private var advancedSection: some View {
+        paneScroll {
+            // Hero card (dark gradient)
+            let readyCount = model.modelCatalog.statuses.filter { $0.availability == .ready }.count
+            let totalCount = model.modelCatalog.statuses.count
+
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(readyCount) of \(totalCount) models ready")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(HeardTheme.Paper.recordingInk)
+                    Text(model.downloadManager.allBatchModelsReady
+                         ? "Ready to transcribe"
+                         : "Some models need downloading")
+                        .font(.system(size: 11))
+                        .foregroundStyle(HeardTheme.Paper.recordingInk.opacity(0.65))
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 6) {
+                    if !model.downloadManager.allBatchModelsReady {
+                        Button("Download Missing") {
+                            model.downloadManager.downloadAllModels()
+                        }
+                        .buttonStyle(HeroButtonStyle())
+                    }
+                    Button("Unload All") {
+                        model.pipelineProcessor.unloadPipelineModels()
+                        model.dictationManager.unloadModels()
+                    }
+                    .buttonStyle(HeroButtonStyle(isDanger: true))
+                    .disabled(model.pipelineProcessor.isProcessing || model.isDictating)
+                }
+            }
+            .padding(14)
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "2E3338"), Color(hex: "1C2024")],
+                    startPoint: .top, endPoint: .bottom
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: HeardTheme.Radius.card))
+            .overlay(
+                RoundedRectangle(cornerRadius: HeardTheme.Radius.card)
+                    .stroke(Color(hex: "3A3F47"), lineWidth: 0.5)
+            )
+
+            sectionGroup("Models on Disk") {
+                SettingsCard {
+                    ForEach(Array(model.modelCatalog.statuses.enumerated()), id: \.offset) { index, item in
+                        CardRow(isLast: index == model.modelCatalog.statuses.count - 1) {
+                            ModelStatusRow(item: item, downloadManager: model.downloadManager)
+                        }
+                    }
+                }
+            }
+
+            sectionGroup("Meeting Transcription Keep-Alive") {
+                SettingsCard {
+                    CardRow {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Keep transcription models loaded for **\(keepAliveLabel(model.settingsStore.settings.pipelineKeepAlive))** after processing.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                            Slider(
+                                value: Binding<Double>(
+                                    get: { Double(model.settingsStore.settings.pipelineKeepAlive) },
+                                    set: { model.settingsStore.settings.pipelineKeepAlive = Int($0) }
+                                ),
+                                in: 0...99, step: 1
+                            )
+                            HStack {
+                                Text("Unload immediately")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                                Spacer()
+                                Text("99 minutes")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                            }
+                        }
+                    }
+                    CardRow(isLast: true) {
+                        Text("Keeping models loaded speeds up back-to-back meetings but uses ~800 MB RAM.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(HeardTheme.Paper.mute)
+                    }
+                }
+            }
+
+            sectionGroup("Dictation Keep-Alive") {
+                SettingsCard {
+                    CardRow {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Keep dictation model loaded for **\(keepAliveLabel(model.settingsStore.settings.dictationKeepAlive))** after stopping.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                            Slider(
+                                value: Binding<Double>(
+                                    get: { Double(model.settingsStore.settings.dictationKeepAlive) },
+                                    set: { model.settingsStore.settings.dictationKeepAlive = Int($0) }
+                                ),
+                                in: 0...99, step: 1
+                            )
+                            HStack {
+                                Text("Unload immediately")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                                Spacer()
+                                Text("99 minutes")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                            }
+                        }
+                    }
+                    CardRow(isLast: true) {
+                        HStack {
+                            Text("~800 MB RAM while loaded")
+                                .font(.system(size: 11))
+                                .foregroundStyle(HeardTheme.Paper.mute)
+                            Spacer()
+                            Button("Unload Now") { model.dictationManager.unloadModels() }
+                                .disabled(model.isDictating)
+                        }
+                    }
+                }
+            }
+
+            sectionGroup("Debugging") {
+                SettingsCard {
+                    ToggleRow(
+                        title: "Developer Mode",
+                        subtitle: "Shows simulate meeting buttons for testing",
+                        isLast: true,
+                        isOn: settingsBinding(\.developerMode)
+                    )
+                }
+            }
+        }
     }
 
     // MARK: About
@@ -1466,13 +1479,9 @@ public struct SettingsView: View {
         )
     }
 
-    private func keepAliveLabel(_ seconds: TimeInterval) -> String {
-        if seconds <= 0 { return "0s" }
-        let mins = Int(seconds) / 60
-        let secs = Int(seconds) % 60
-        if mins > 0 && secs > 0 { return "\(mins)m \(secs)s" }
-        if mins > 0 { return "\(mins)m" }
-        return "\(secs)s"
+    private func keepAliveLabel(_ minutes: Int) -> String {
+        if minutes == 0 { return "0 minutes (unload immediately)" }
+        return minutes == 1 ? "1 minute" : "\(minutes) minutes"
     }
 }
 
