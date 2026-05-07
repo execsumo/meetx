@@ -1340,14 +1340,9 @@ public struct SettingsView: View {
                         }
                     }
                     CardRow(isLast: true) {
-                        HStack(alignment: .top) {
-                            Text("Keeping models loaded speeds up back-to-back meetings and dictation, but uses ~800 MB RAM. Set to 0 to unload immediately.")
-                                .font(.system(size: 11))
-                                .foregroundStyle(HeardTheme.Paper.mute)
-                            Spacer()
-                            Button("Unload Now") { model.dictationManager.unloadModels() }
-                                .disabled(model.isDictating)
-                        }
+                        Text("Keeping models loaded speeds up back-to-back meetings and dictation, but uses ~800 MB RAM. Set to 0 to unload immediately.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(HeardTheme.Paper.mute)
                     }
                 }
             }
