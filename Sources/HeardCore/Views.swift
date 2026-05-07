@@ -300,7 +300,8 @@ public struct MenuBarView: View {
                     }
                 }
 
-                if model.settingsStore.settings.dictationEnabled && !model.isDictating {
+                if model.settingsStore.settings.dictationEnabled && !model.isDictating
+                    && model.recordingManager.activeSession == nil {
                     MenuBarRow(title: "Start Dictation", icon: "mic.badge.plus") {
                         model.toggleDictation()
                     }
