@@ -250,6 +250,8 @@ public var filteredSpeakers: [SpeakerProfile] {
     public func toggleDictation() {
         // Drop rapid presses while a start/stop is already in progress.
         guard !dictationToggleInFlight else { return }
+        // Don't start dictation while a meeting is being recorded.
+        if !isDictating && recordingManager.activeSession != nil { return }
         dictationToggleInFlight = true
         Task {
             defer { dictationToggleInFlight = false }
