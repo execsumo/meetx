@@ -15,7 +15,6 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 
 ### Meeting detection & recording
 - **Audible meeting-start chime (opt-in).** A short non-intrusive sound confirms recording started. Off by default.
-- **Graceful fallback on tap failure.** Already mic-only-on-tap-error; surface a warning banner in the menu bar dropdown so the user knows the meeting will only have their own voice.
 
 ### Pipeline
 - **Preprocessing concurrency guard.** Both tracks are currently preprocessed concurrently in a `TaskGroup`. On machines with tight memory, this doubles the peak RAM during VAD. Expose a setting to serialize preprocessing.

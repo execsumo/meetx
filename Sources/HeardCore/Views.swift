@@ -259,6 +259,9 @@ public struct MenuBarView: View {
             if model.dictationAXLost {
                 axLostBanner
             }
+            if model.recordingManager.appAudioTapFailed && model.recordingManager.activeSession != nil {
+                tapFailedBanner
+            }
 
             statusHeader
                 .padding(.horizontal, 10)
@@ -489,6 +492,28 @@ public struct MenuBarView: View {
                 .buttonStyle(.plain)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(HeardTheme.Paper.mute)
+        }
+        .padding(10)
+        .background(HeardTheme.Paper.warnSoft, in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
+    }
+
+    private var tapFailedBanner: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(HeardTheme.Paper.warn)
+                .font(.caption)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("System audio tap failed. Recording only your voice.")
+                    .font(.caption)
+                    .foregroundStyle(HeardTheme.Paper.ink)
+                    .lineLimit(3)
+                Text("Verify Screen Recording permission in System Settings.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(HeardTheme.Paper.mute)
+            }
+            Spacer(minLength: 4)
         }
         .padding(10)
         .background(HeardTheme.Paper.warnSoft, in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
