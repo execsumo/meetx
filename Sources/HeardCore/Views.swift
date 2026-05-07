@@ -2084,8 +2084,6 @@ public struct SpeakerNamingView: View {
             get: { drafts[candidate.id] ?? candidate.suggestedName ?? "" },
             set: { newValue in
                 drafts[candidate.id] = newValue
-                // Any text edit resets the dormancy timer so an active user isn't interrupted.
-                model.resetNamingAutoDismiss()
                 startCountdown()
             }
         )
@@ -2122,6 +2120,10 @@ public struct SpeakerNamingView: View {
                 guard !Task.isCancelled else { return }
                 countdownSeconds -= 1
             }
+            guard !Task.isCancelled else { return }
+            stopAudio()
+            saveAll()
+            dismissWindow(id: "speaker-naming")
         }
     }
 }
