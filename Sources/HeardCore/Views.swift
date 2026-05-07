@@ -895,7 +895,7 @@ public struct SettingsView: View {
                 SettingsCard {
                     CardRow(isLast: false) {
                         HStack {
-                            Text("Primary Language")
+                            Text("Supported Languages")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(HeardTheme.Paper.ink)
                             Spacer()
@@ -905,7 +905,7 @@ public struct SettingsView: View {
                                 }
                             }
                             .labelsHidden()
-                            .frame(maxWidth: 200)
+                            .frame(maxWidth: 260)
                         }
                     }
                     CardRow(isLast: true) {
@@ -1235,8 +1235,14 @@ public struct SettingsView: View {
                     Text("\(speaker.meetingCount)").monospacedDigit()
                 }
                 .width(min: 60, ideal: 70, max: 90)
-                TableColumn("First Seen") { speaker in
-                    Text(speaker.firstSeen.formatted(date: .abbreviated, time: .omitted))
+                TableColumn("Time in Meetings") { speaker in
+                    let hours = Int(speaker.totalMeetingDuration) / 3600
+                    let minutes = (Int(speaker.totalMeetingDuration) % 3600) / 60
+                    if hours > 0 {
+                        Text("\(hours)h \(minutes)m").monospacedDigit()
+                    } else {
+                        Text("\(minutes)m").monospacedDigit()
+                    }
                 }
                 TableColumn("Last Seen") { speaker in
                     Text(speaker.lastSeen.formatted(date: .abbreviated, time: .omitted))

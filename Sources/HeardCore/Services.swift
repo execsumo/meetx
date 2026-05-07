@@ -1863,7 +1863,7 @@ public final class PipelineProcessor: ObservableObject {
                         audioClipURLs: clip.clipURLs,
                         embedding: clip.embedding,
                         transcriptPath: outputURL,
-                        totalSpeechDuration: clip.duration,
+                        totalMeetingDuration: clip.duration,
                         totalWordCount: clip.words
                     )
                 }
@@ -2287,27 +2287,25 @@ public final class PipelineProcessor: ObservableObject {
         let allParticipants = segmentSpeakers.union(Set(job.rosterNames)).sorted()
 
         // Calculate stats
-        var durationPerSpeaker: [String: TimeInterval] = [:]
+        let meetingDuration = finalSegments.last?.endTime ?? 0
         var wordsPerSpeaker: [String: Int] = [:]
         for segment in finalSegments {
-            let duration = max(0, segment.endTime - segment.startTime)
             let words = segment.text.split(whereSeparator: { $0.isWhitespace }).count
-            durationPerSpeaker[segment.speaker, default: 0] += duration
             wordsPerSpeaker[segment.speaker, default: 0] += words
         }
 
         // Apply to existing known speakers
         for profile in speakerStore.speakers {
-            if let duration = durationPerSpeaker[profile.name], duration > 0 {
+            if segmentSpeakers.contains(profile.name) {
                 let words = wordsPerSpeaker[profile.name] ?? 0
-                speakerStore.updateStats(id: profile.id, addDuration: duration, addWords: words)
+                speakerStore.updateStats(id: profile.id, addDuration: meetingDuration, addWords: words)
             }
         }
 
         // Apply to unmatched speakers
         for i in unmatchedSpeakerInfo.indices {
             let name = unmatchedSpeakerInfo[i].temporaryName
-            unmatchedSpeakerInfo[i].duration = durationPerSpeaker[name] ?? 0
+            unmatchedSpeakerInfo[i].duration = meetingDuration
             unmatchedSpeakerInfo[i].words = wordsPerSpeaker[name] ?? 0
         }
 

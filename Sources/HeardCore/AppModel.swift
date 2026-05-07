@@ -573,7 +573,7 @@ public var filteredSpeakers: [SpeakerProfile] {
                 firstSeen: Date(),
                 lastSeen: Date(),
                 meetingCount: 1,
-                totalSpeechDuration: candidate.totalSpeechDuration,
+                totalMeetingDuration: candidate.totalMeetingDuration,
                 totalWordCount: candidate.totalWordCount,
                 audioClipURLs: persistedClips
             )

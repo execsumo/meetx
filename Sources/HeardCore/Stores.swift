@@ -244,7 +244,7 @@ public final class SpeakerStore: ObservableObject {
 
     public func updateStats(id: UUID, addDuration: TimeInterval, addWords: Int) {
         guard let index = speakers.firstIndex(where: { $0.id == id }) else { return }
-        speakers[index].totalSpeechDuration += addDuration
+        speakers[index].totalMeetingDuration += addDuration
         speakers[index].totalWordCount += addWords
         persist()
     }
@@ -272,7 +272,7 @@ public final class SpeakerStore: ObservableObject {
         primary.firstSeen = min(primary.firstSeen, secondary.firstSeen)
         primary.lastSeen = max(primary.lastSeen, secondary.lastSeen)
         primary.meetingCount += secondary.meetingCount
-        primary.totalSpeechDuration += secondary.totalSpeechDuration
+        primary.totalMeetingDuration += secondary.totalMeetingDuration
         primary.totalWordCount += secondary.totalWordCount
         speakers[primaryIndex] = primary
         speakers.remove(at: secondaryIndex)

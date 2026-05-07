@@ -135,7 +135,7 @@ public struct SpeakerProfile: Codable, Identifiable, Equatable {
     public var firstSeen: Date
     public var lastSeen: Date
     public var meetingCount: Int
-    public var totalSpeechDuration: TimeInterval
+    public var totalMeetingDuration: TimeInterval
     public var totalWordCount: Int
     /// Persisted voice samples for this speaker (used for replay in settings).
     /// Ordered best-first; multiple samples help the user disambiguate when one is silent.
@@ -148,7 +148,7 @@ public struct SpeakerProfile: Codable, Identifiable, Equatable {
         firstSeen: Date,
         lastSeen: Date,
         meetingCount: Int,
-        totalSpeechDuration: TimeInterval = 0,
+        totalMeetingDuration: TimeInterval = 0,
         totalWordCount: Int = 0,
         audioClipURLs: [URL] = []
     ) {
@@ -158,14 +158,14 @@ public struct SpeakerProfile: Codable, Identifiable, Equatable {
         self.firstSeen = firstSeen
         self.lastSeen = lastSeen
         self.meetingCount = meetingCount
-        self.totalSpeechDuration = totalSpeechDuration
+        self.totalMeetingDuration = totalMeetingDuration
         self.totalWordCount = totalWordCount
         self.audioClipURLs = audioClipURLs
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, embeddings, firstSeen, lastSeen, meetingCount
-        case totalSpeechDuration, totalWordCount
+        case totalMeetingDuration, totalWordCount
         case audioClipURLs
         case audioClipURL // legacy single-URL field
     }
@@ -178,7 +178,7 @@ public struct SpeakerProfile: Codable, Identifiable, Equatable {
         firstSeen = try c.decode(Date.self, forKey: .firstSeen)
         lastSeen = try c.decode(Date.self, forKey: .lastSeen)
         meetingCount = try c.decode(Int.self, forKey: .meetingCount)
-        totalSpeechDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .totalSpeechDuration) ?? 0
+        totalMeetingDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .totalMeetingDuration) ?? 0
         totalWordCount = try c.decodeIfPresent(Int.self, forKey: .totalWordCount) ?? 0
         if let urls = try c.decodeIfPresent([URL].self, forKey: .audioClipURLs) {
             audioClipURLs = urls
@@ -197,7 +197,7 @@ public struct SpeakerProfile: Codable, Identifiable, Equatable {
         try c.encode(firstSeen, forKey: .firstSeen)
         try c.encode(lastSeen, forKey: .lastSeen)
         try c.encode(meetingCount, forKey: .meetingCount)
-        try c.encode(totalSpeechDuration, forKey: .totalSpeechDuration)
+        try c.encode(totalMeetingDuration, forKey: .totalMeetingDuration)
         try c.encode(totalWordCount, forKey: .totalWordCount)
         try c.encode(audioClipURLs, forKey: .audioClipURLs)
     }
@@ -214,7 +214,7 @@ public struct NamingCandidate: Identifiable, Equatable {
     public var embedding: [Float]
     /// Path to the transcript file that uses this temporary name; used to rewrite the file when the speaker is named.
     public var transcriptPath: URL?
-    public var totalSpeechDuration: TimeInterval
+    public var totalMeetingDuration: TimeInterval
     public var totalWordCount: Int
 
     public init(
@@ -224,7 +224,7 @@ public struct NamingCandidate: Identifiable, Equatable {
         audioClipURLs: [URL] = [],
         embedding: [Float] = [],
         transcriptPath: URL? = nil,
-        totalSpeechDuration: TimeInterval = 0,
+        totalMeetingDuration: TimeInterval = 0,
         totalWordCount: Int = 0
     ) {
         self.id = id
@@ -233,7 +233,7 @@ public struct NamingCandidate: Identifiable, Equatable {
         self.audioClipURLs = audioClipURLs
         self.embedding = embedding
         self.transcriptPath = transcriptPath
-        self.totalSpeechDuration = totalSpeechDuration
+        self.totalMeetingDuration = totalMeetingDuration
         self.totalWordCount = totalWordCount
     }
 }
@@ -480,7 +480,7 @@ public struct TranscriptDocument {
     public var endTime: Date
     public var participants: [String]
     public var segments: [TranscriptSegment]
-    /// Unmatched speakers from diarization (speakerID, temporary name, embedding, totalSpeechDuration, totalWordCount).
+    /// Unmatched speakers from diarization (speakerID, temporary name, embedding, totalMeetingDuration, totalWordCount).
     public var unmatchedSpeakers: [(speakerID: String, temporaryName: String, embedding: [Float], duration: TimeInterval, words: Int)]
     /// Diarization segments with original-time timestamps for clip extraction.
     public var diarizationSegments: [(speakerID: String, startTime: TimeInterval, endTime: TimeInterval)]
