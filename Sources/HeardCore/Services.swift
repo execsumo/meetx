@@ -1436,7 +1436,7 @@ public enum TranscriptWriter {
         }
     }
 
-    public static func write(document: TranscriptDocument, outputDirectory: URL, filenameFormat: FilenameFormat = .shortDate) throws -> URL {
+    public static func write(document: TranscriptDocument, outputDirectory: URL, filenameFormat: FilenameFormat = .isoDate) throws -> URL {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         
         let title = document.title.sanitizedFileName()
@@ -1444,15 +1444,15 @@ public enum TranscriptWriter {
         let filenameStr: String
         
         switch filenameFormat {
-        case .shortDate:
-            formatter.dateFormat = "yyMMdd"
-            filenameStr = "\(formatter.string(from: document.startTime))_\(title)"
         case .isoDate:
             formatter.dateFormat = "yyyy-MM-dd"
             filenameStr = "\(formatter.string(from: document.startTime))_\(title)"
-        case .nameFirstShort:
-            formatter.dateFormat = "yyMMdd"
-            filenameStr = "\(title)_\(formatter.string(from: document.startTime))"
+        case .isoDateTime:
+            formatter.dateFormat = "yyyy-MM-dd_HH-mm"
+            filenameStr = "\(formatter.string(from: document.startTime))_\(title)"
+        case .shortDateTime:
+            formatter.dateFormat = "MM-dd_HH-mm"
+            filenameStr = "\(formatter.string(from: document.startTime))_\(title)"
         case .nameFirstIso:
             formatter.dateFormat = "yyyy-MM-dd"
             filenameStr = "\(title)_\(formatter.string(from: document.startTime))"

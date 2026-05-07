@@ -893,24 +893,28 @@ public struct SettingsView: View {
         paneScroll {
             sectionGroup("Language Support") {
                 SettingsCard {
-                    ForEach(Array(TranscriptionModel.allCases.enumerated()), id: \.offset) { index, version in
-                        CardRow(isLast: index == TranscriptionModel.allCases.count - 1) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(version.displayName)
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundStyle(HeardTheme.Paper.ink)
-                                }
-                                Spacer()
-                                if model.settingsStore.settings.transcriptionModel == version {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(HeardTheme.Paper.accent)
+                    CardRow(isLast: false) {
+                        HStack {
+                            Text("Primary Language")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                            Spacer()
+                            Picker("", selection: settingsBinding(\.transcriptionModel)) {
+                                ForEach(TranscriptionModel.allCases) { version in
+                                    Text(version.displayName).tag(version)
                                 }
                             }
-                            .contentShape(Rectangle())
-                            .onTapGesture { model.setTranscriptionModel(version) }
+                            .labelsHidden()
+                            .frame(maxWidth: 200)
                         }
+                    }
+                    CardRow(isLast: true) {
+                        let version = model.settingsStore.settings.transcriptionModel
+                        Text(version == .v2
+                             ? "English (Optimized) is recommended for English-only meetings."
+                             : "European Languages (Beta) provides broader language support but may use more resources.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(HeardTheme.Paper.mute)
                     }
                 }
             }

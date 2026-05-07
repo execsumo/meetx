@@ -285,9 +285,9 @@ public enum SpeakerSortMode: String, CaseIterable, Identifiable {
 }
 
 public enum FilenameFormat: String, Codable, CaseIterable, Identifiable {
-    case shortDate = "YYMMDD_Name"
     case isoDate = "YYYY-MM-DD_Name"
-    case nameFirstShort = "Name_YYMMDD"
+    case isoDateTime = "YYYY-MM-DD_HH-mm_Name"
+    case shortDateTime = "MM-DD_HH-mm_Name"
     case nameFirstIso = "Name_YYYY-MM-DD"
     case nameOnly = "Name"
 
@@ -295,9 +295,9 @@ public enum FilenameFormat: String, Codable, CaseIterable, Identifiable {
 
     public var displayName: String {
         switch self {
-        case .shortDate: return "YYMMDD_MeetingName"
         case .isoDate: return "YYYY-MM-DD_MeetingName"
-        case .nameFirstShort: return "MeetingName_YYMMDD"
+        case .isoDateTime: return "YYYY-MM-DD_HH-mm_MeetingName"
+        case .shortDateTime: return "MM-DD_HH-mm_MeetingName"
         case .nameFirstIso: return "MeetingName_YYYY-MM-DD"
         case .nameOnly: return "MeetingName"
         }
@@ -359,7 +359,7 @@ public struct AppSettings: Codable, Equatable {
         pipelineKeepAlive: 0,
         transcriptionModel: .v2,
         showDictationHUD: false,
-        filenameFormat: .shortDate,
+        filenameFormat: .isoDate,
         meetingNoteHotkey: .meetingNoteDefault
     )
 
@@ -378,7 +378,7 @@ public struct AppSettings: Codable, Equatable {
         pipelineKeepAlive: Int = 0,
         transcriptionModel: TranscriptionModel = .v2,
         showDictationHUD: Bool = false,
-        filenameFormat: FilenameFormat = .shortDate,
+        filenameFormat: FilenameFormat = .isoDate,
         meetingNoteHotkey: HotkeyCombo = .meetingNoteDefault
     ) {
         self.userName = userName
