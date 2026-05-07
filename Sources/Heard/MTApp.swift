@@ -4,6 +4,7 @@ import SwiftUI
 
 private struct MenuBarIcon: View {
     @ObservedObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
 
     private static let templateImage: NSImage = {
         guard let url = Bundle.main.url(forResource: "MenuBarIconTemplate", withExtension: "svg"),
@@ -22,6 +23,10 @@ private struct MenuBarIcon: View {
             .opacity(iconOpacity)
             .overlay(alignment: .topTrailing) {
                 badge
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenSettings"))) { _ in
+                openWindow(id: "settings")
+                NSApp.activate(ignoringOtherApps: true)
             }
     }
 
@@ -60,8 +65,16 @@ private struct MenuBarIcon: View {
     }
 }
 
+class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        NotificationCenter.default.post(name: NSNotification.Name("OpenSettings"), object: nil)
+        return true
+    }
+}
+
 @main
 struct HeardApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appModel = AppModel.bootstrap()
 
     var body: some Scene {
