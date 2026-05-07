@@ -1318,67 +1318,30 @@ public struct SettingsView: View {
                 }
             }
 
-            sectionGroup("Meeting Transcription Keep-Alive") {
+            sectionGroup("Model Keep-Alive") {
                 SettingsCard {
-                    CardRow {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Keep transcription models loaded for **\(keepAliveLabel(model.settingsStore.settings.pipelineKeepAlive))** after processing.")
-                                .font(.system(size: 12))
-                                .foregroundStyle(HeardTheme.Paper.ink)
-                            Slider(
-                                value: Binding<Double>(
-                                    get: { Double(model.settingsStore.settings.pipelineKeepAlive) },
-                                    set: { model.settingsStore.settings.pipelineKeepAlive = Int($0) }
-                                ),
-                                in: 0...99, step: 1
-                            )
-                            HStack {
-                                Text("Unload immediately")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(HeardTheme.Paper.mute)
-                                Spacer()
-                                Text("99 minutes")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(HeardTheme.Paper.mute)
-                            }
-                        }
-                    }
-                    CardRow(isLast: true) {
-                        Text("Keeping models loaded speeds up back-to-back meetings but uses ~800 MB RAM.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(HeardTheme.Paper.mute)
-                    }
-                }
-            }
-
-            sectionGroup("Dictation Keep-Alive") {
-                SettingsCard {
-                    CardRow {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Keep dictation model loaded for **\(keepAliveLabel(model.settingsStore.settings.dictationKeepAlive))** after stopping.")
-                                .font(.system(size: 12))
-                                .foregroundStyle(HeardTheme.Paper.ink)
-                            Slider(
-                                value: Binding<Double>(
-                                    get: { Double(model.settingsStore.settings.dictationKeepAlive) },
-                                    set: { model.settingsStore.settings.dictationKeepAlive = Int($0) }
-                                ),
-                                in: 0...99, step: 1
-                            )
-                            HStack {
-                                Text("Unload immediately")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(HeardTheme.Paper.mute)
-                                Spacer()
-                                Text("99 minutes")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(HeardTheme.Paper.mute)
-                            }
-                        }
-                    }
-                    CardRow(isLast: true) {
+                    CardRow(isLast: false) {
                         HStack {
-                            Text("~800 MB RAM while loaded")
+                            Text("Keep models loaded for")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                            Spacer()
+                            TextField("Minutes", value: settingsBinding(\.modelKeepAlive), format: .number)
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 12))
+                                .multilineTextAlignment(.trailing)
+                                .frame(width: 40)
+                                .padding(4)
+                                .background(Color.black.opacity(0.05))
+                                .cornerRadius(4)
+                            Text("minutes")
+                                .font(.system(size: 12))
+                                .foregroundStyle(HeardTheme.Paper.mute)
+                        }
+                    }
+                    CardRow(isLast: true) {
+                        HStack(alignment: .top) {
+                            Text("Keeping models loaded speeds up back-to-back meetings and dictation, but uses ~800 MB RAM. Set to 0 to unload immediately.")
                                 .font(.system(size: 11))
                                 .foregroundStyle(HeardTheme.Paper.mute)
                             Spacer()
@@ -1487,11 +1450,6 @@ public struct SettingsView: View {
             get: { model.settingsStore.settings[keyPath: keyPath] },
             set: { model.settingsStore.settings[keyPath: keyPath] = $0 }
         )
-    }
-
-    private func keepAliveLabel(_ minutes: Int) -> String {
-        if minutes == 0 { return "0 minutes (unload immediately)" }
-        return minutes == 1 ? "1 minute" : "\(minutes) minutes"
     }
 }
 

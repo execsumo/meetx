@@ -145,15 +145,13 @@ public final class SettingsStore: ObservableObject {
             filenameFormat = decoded
         }
 
-        var dictationKeepAlive = base.dictationKeepAlive
-        if let val = defaults.object(forKey: "dictationKeepAlive") as? NSNumber {
-            // Assume any value >= 30 is old seconds-based format
-            dictationKeepAlive = val.doubleValue >= 30 ? Int(val.doubleValue / 60) : val.intValue
-        }
-
-        var pipelineKeepAlive = base.pipelineKeepAlive
-        if let val = defaults.object(forKey: "pipelineKeepAlive") as? NSNumber {
-            pipelineKeepAlive = val.doubleValue >= 30 ? Int(val.doubleValue / 60) : val.intValue
+        var modelKeepAlive = base.modelKeepAlive
+        if let val = defaults.object(forKey: "modelKeepAlive") as? NSNumber {
+            modelKeepAlive = val.intValue
+        } else if let val = defaults.object(forKey: "dictationKeepAlive") as? NSNumber {
+            modelKeepAlive = val.doubleValue >= 30 ? Int(val.doubleValue / 60) : val.intValue
+        } else if let val = defaults.object(forKey: "pipelineKeepAlive") as? NSNumber {
+            modelKeepAlive = val.doubleValue >= 30 ? Int(val.doubleValue / 60) : val.intValue
         }
 
         var transcriptionModel = base.transcriptionModel
@@ -173,8 +171,7 @@ public final class SettingsStore: ObservableObject {
             dictationEnabled: defaults.object(forKey: "dictationEnabled") as? Bool ?? base.dictationEnabled,
             dictationHotkey: hotkey,
             pushToTalk: defaults.object(forKey: "pushToTalk") as? Bool ?? base.pushToTalk,
-            dictationKeepAlive: dictationKeepAlive,
-            pipelineKeepAlive: pipelineKeepAlive,
+            modelKeepAlive: modelKeepAlive,
             transcriptionModel: transcriptionModel,
             showDictationHUD: defaults.object(forKey: "showDictationHUD") as? Bool ?? base.showDictationHUD,
             filenameFormat: filenameFormat,
@@ -195,8 +192,7 @@ public final class SettingsStore: ObservableObject {
         defaults.set(settings.dictationEnabled, forKey: "dictationEnabled")
         defaults.set(settings.filenameFormat.rawValue, forKey: "filenameFormat")
         defaults.set(settings.pushToTalk, forKey: "pushToTalk")
-        defaults.set(settings.dictationKeepAlive, forKey: "dictationKeepAlive")
-        defaults.set(settings.pipelineKeepAlive, forKey: "pipelineKeepAlive")
+        defaults.set(settings.modelKeepAlive, forKey: "modelKeepAlive")
         defaults.set(settings.transcriptionModel.rawValue, forKey: "transcriptionModel")
         defaults.set(settings.showDictationHUD, forKey: "showDictationHUD")
         if let hotkeyData = try? JSONEncoder().encode(settings.dictationHotkey) {

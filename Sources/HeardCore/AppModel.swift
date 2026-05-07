@@ -250,7 +250,7 @@ public var filteredSpeakers: [SpeakerProfile] {
         Task {
             defer { dictationToggleInFlight = false }
             if isDictating {
-                dictationManager.modelKeepAliveSeconds = TimeInterval(settingsStore.settings.dictationKeepAlive * 60)
+                dictationManager.modelKeepAliveSeconds = TimeInterval(settingsStore.settings.modelKeepAlive * 60)
                 await dictationManager.stop()
                 isDictating = false
                 partialTranscript = ""
@@ -262,12 +262,12 @@ public var filteredSpeakers: [SpeakerProfile] {
                     dictationManager.customVocabulary = settingsStore.settings.customVocabulary
                     dictationManager.formattingCommands = settingsStore.settings.formattingCommands
                     dictationManager.modelVersion = settingsStore.settings.transcriptionModel
-                    dictationManager.modelKeepAliveSeconds = TimeInterval(settingsStore.settings.dictationKeepAlive * 60)
+                    dictationManager.modelKeepAliveSeconds = TimeInterval(settingsStore.settings.modelKeepAlive * 60)
                     try await dictationManager.start()
                     // Push-to-talk race: if the key was released before loading finished,
                     // stop immediately rather than leaving dictation stuck on.
                     if settingsStore.settings.pushToTalk && !pushToTalkKeyHeld {
-                        dictationManager.modelKeepAliveSeconds = TimeInterval(settingsStore.settings.dictationKeepAlive * 60)
+                        dictationManager.modelKeepAliveSeconds = TimeInterval(settingsStore.settings.modelKeepAlive * 60)
                         await dictationManager.stop()
                         dictationError = nil
                         return
@@ -450,7 +450,7 @@ public var filteredSpeakers: [SpeakerProfile] {
     private func stopDictationIfActive() {
         guard isDictating else { return }
         Task {
-            dictationManager.modelKeepAliveSeconds = TimeInterval(settingsStore.settings.dictationKeepAlive * 60)
+            dictationManager.modelKeepAliveSeconds = TimeInterval(settingsStore.settings.modelKeepAlive * 60)
             await dictationManager.stop()
             isDictating = false
             partialTranscript = ""

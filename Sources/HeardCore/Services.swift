@@ -1681,7 +1681,7 @@ public final class PipelineProcessor: ObservableObject {
         // Default keepAlive is 0: unload immediately. Back-to-back meetings don't
         // cause rapid reloads because meeting 2 records while meeting 1's pipeline
         // runs — the gap before reload is always at least meeting 2's remaining duration.
-        let keepAlive = TimeInterval(settingsStore.settings.pipelineKeepAlive * 60)
+        let keepAlive = TimeInterval(settingsStore.settings.modelKeepAlive * 60)
         if keepAlive > 0 {
             scheduleModelUnload(after: keepAlive)
         } else {

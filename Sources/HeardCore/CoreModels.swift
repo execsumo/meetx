@@ -327,10 +327,8 @@ public struct AppSettings: Codable, Equatable {
     public var dictationEnabled: Bool
     public var dictationHotkey: HotkeyCombo
     public var pushToTalk: Bool
-    /// How long to keep dictation models loaded after stopping (minutes). 0 = unload immediately.
-    public var dictationKeepAlive: Int
-    /// How long to keep transcription/diarization models loaded after pipeline processing (minutes). 0 = unload immediately.
-    public var pipelineKeepAlive: Int
+    /// How long to keep models loaded after use (minutes). 0 = unload immediately.
+    public var modelKeepAlive: Int
     /// Which Parakeet model version to use for transcription (pipeline + dictation).
     public var transcriptionModel: TranscriptionModel
     /// Show a floating HUD while dictation is active (opt-in).
@@ -355,8 +353,7 @@ public struct AppSettings: Codable, Equatable {
         dictationEnabled: false,
         dictationHotkey: .default,
         pushToTalk: false,
-        dictationKeepAlive: 2,
-        pipelineKeepAlive: 0,
+        modelKeepAlive: 2,
         transcriptionModel: .v2,
         showDictationHUD: false,
         filenameFormat: .isoDate,
@@ -374,8 +371,7 @@ public struct AppSettings: Codable, Equatable {
         dictationEnabled: Bool = false,
         dictationHotkey: HotkeyCombo = .default,
         pushToTalk: Bool = false,
-        dictationKeepAlive: Int = 2,
-        pipelineKeepAlive: Int = 0,
+        modelKeepAlive: Int = 2,
         transcriptionModel: TranscriptionModel = .v2,
         showDictationHUD: Bool = false,
         filenameFormat: FilenameFormat = .isoDate,
@@ -391,8 +387,7 @@ public struct AppSettings: Codable, Equatable {
         self.dictationEnabled = dictationEnabled
         self.dictationHotkey = dictationHotkey
         self.pushToTalk = pushToTalk
-        self.dictationKeepAlive = dictationKeepAlive
-        self.pipelineKeepAlive = pipelineKeepAlive
+        self.modelKeepAlive = modelKeepAlive
         self.transcriptionModel = transcriptionModel
         self.showDictationHUD = showDictationHUD
         self.filenameFormat = filenameFormat
