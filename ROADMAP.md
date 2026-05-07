@@ -14,7 +14,6 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 
 ### Menu bar icons & state feedback
 - **Richer icon states (future).** Today the menu bar uses SF Symbols with built-in symbol effects. Once tint/opacity is stable, investigate whether a custom `NSStatusItem` wrapper with frame-by-frame `NSImage` updates would give us more distinct badges (error vs. user-action vs. processing vs. dictating) without adding a dependency.
-- **Error badge persistence.** The spec calls out a red exclamation badge that persists until acknowledged. Verify this survives app relaunch when a failed job stays in the queue.
 - **Menu bar dropdown height.** The `.window` style has a fixed max height; with many jobs queued, the bottom of the panel can clip. Add an internal `ScrollView` for the jobs list.
 
 ### Meeting detection & recording
@@ -23,13 +22,17 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 
 ### Pipeline
 - **Preprocessing concurrency guard.** Both tracks are currently preprocessed concurrently in a `TaskGroup`. On machines with tight memory, this doubles the peak RAM during VAD. Expose a setting to serialize preprocessing.
+- **Progress in the UI.** The menu bar dropdown shows the current stage but no sub-stage progress. Emit sample-count-based progress from `AsrManager.transcribe` through an `AsyncStream`.
 - **Per-job log viewer.** When a job fails, the error string is short. Capture a rolling per-job log (stdout/NSLog lines) and show it in a disclosure view.
+- **Exclude silent clips from speaker naming.** When extracting audio clips for the speaker naming dialogue, filter out segments with silence/VAD gaps so each playback is continuous speech.
+- **Fix speaker naming dialogue auto-close.** The 120-second auto-dismiss is too aggressive when the user is actively filling out speaker names. Change behavior: close only if the window has been open and dormant (no text edits) for the full duration.
 - **Improve speaker table sorting.** Replace the sort dropdown with standard column-header sorting: click a column name (Name / Last Seen / Meeting Count) to sort by that field, click again to toggle descending (default) ↔ ascending. Show a subtle indicator (caret) on the active sort column.
 
 ### Testing
 - **Golden-file tests for `RosterReader` AX traversal.** The parser and filter are covered, but the actual DOM walk (`findRosterPanel`, `findParticipantList`, `extractTextChildren`) is still untested because it's bound to live `AXUIElement`. Introduce a small protocol wrapper around the AX tree that can be fed captured JSON snapshots from real Teams meetings (various states: pre-join lobby, 2-person call, 10-person call, roster panel open vs collapsed). This is the single highest-value remaining roster test — the one most likely to catch breakage when Teams updates its DOM.
 
 ### Custom vocabulary
+- **Phrase boosting, not just terms.** The CTC path tokenizes whole strings, so multi-word phrases already work — but the UI suggests "terms" and the 3-char minimum blocks short acronyms. Reconsider the minimum and label the field "Terms or short phrases".
 - **Import/export vocabulary list.** JSON round-trip via drag-and-drop.
 
 ## Mid-term — within-spec enhancements

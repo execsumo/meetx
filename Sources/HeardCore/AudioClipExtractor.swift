@@ -106,23 +106,33 @@ public enum AudioClipExtractor {
     /// Picks the longest contiguous segment, or combines multiple segments up to maxClipDuration.
     public static func bestClipRegion(
         speakerID: String,
-        diarizationSegments: [(speakerID: String, startTime: TimeInterval, endTime: TimeInterval)]
+        diarizationSegments: [(speakerID: String, startTime: TimeInterval, endTime: TimeInterval)],
+        speechSegments: [(startTime: TimeInterval, endTime: TimeInterval)]? = nil
     ) -> (startTime: TimeInterval, endTime: TimeInterval)? {
-        bestClipRegions(speakerID: speakerID, diarizationSegments: diarizationSegments, maxCount: 1).first
+        bestClipRegions(
+            speakerID: speakerID,
+            diarizationSegments: diarizationSegments,
+            speechSegments: speechSegments,
+            maxCount: 1
+        ).first
     }
 
     /// Find up to `maxCount` distinct clip regions for a speaker, ordered best-first.
-    /// Each region is up to ~10 s of audio drawn from a different point in the meeting so
-    /// the user has multiple voice samples to disambiguate when one clip is silent or has
-    /// crosstalk. Falls back to combining short fragments if no individual segment is long
-    /// enough.
+    /// Each region is up to ~10 s of audio drawn from a different speech island in the
+    /// meeting. When VAD speech segments are provided, diarization spans are intersected
+    /// with those speech-only ranges so extracted clips do not include silence gaps.
     public static func bestClipRegions(
         speakerID: String,
         diarizationSegments: [(speakerID: String, startTime: TimeInterval, endTime: TimeInterval)],
+        speechSegments: [(startTime: TimeInterval, endTime: TimeInterval)]? = nil,
         maxCount: Int = 3
     ) -> [(startTime: TimeInterval, endTime: TimeInterval)] {
         guard maxCount > 0 else { return [] }
-        let speakerSegs = diarizationSegments.filter { $0.speakerID == speakerID }
+        let speakerSegs = speechOnlySpeakerSegments(
+            speakerID: speakerID,
+            diarizationSegments: diarizationSegments,
+            speechSegments: speechSegments
+        )
         guard !speakerSegs.isEmpty else { return [] }
 
         // Sort by duration descending — longest segments tend to be the cleanest samples.
@@ -148,8 +158,9 @@ public enum AudioClipExtractor {
         }
 
         // Fallback for highly fragmented audio: combine consecutive short segments to
-        // produce at least one usable clip.
-        if regions.isEmpty {
+        // produce at least one usable clip. Only do this without VAD speech islands;
+        // when VAD is available, combining would re-introduce silence gaps.
+        if regions.isEmpty, speechSegments == nil {
             let chronological = speakerSegs.sorted { $0.startTime < $1.startTime }
             var totalDuration: TimeInterval = 0
             let startTime = chronological[0].startTime
@@ -168,6 +179,37 @@ public enum AudioClipExtractor {
         return regions
     }
 
+    private static func speechOnlySpeakerSegments(
+        speakerID: String,
+        diarizationSegments: [(speakerID: String, startTime: TimeInterval, endTime: TimeInterval)],
+        speechSegments: [(startTime: TimeInterval, endTime: TimeInterval)]?
+    ) -> [(speakerID: String, startTime: TimeInterval, endTime: TimeInterval)] {
+        let speakerSegs = diarizationSegments
+            .filter { $0.speakerID == speakerID && $0.endTime > $0.startTime }
+
+        guard let speechSegments else { return speakerSegs }
+
+        let validSpeechSegments = speechSegments
+            .filter { $0.endTime > $0.startTime }
+            .sorted { $0.startTime < $1.startTime }
+        guard !validSpeechSegments.isEmpty else { return [] }
+
+        var clipped: [(speakerID: String, startTime: TimeInterval, endTime: TimeInterval)] = []
+        for diarSeg in speakerSegs {
+            for speechSeg in validSpeechSegments {
+                if speechSeg.startTime >= diarSeg.endTime { break }
+                if speechSeg.endTime <= diarSeg.startTime { continue }
+
+                let start = max(diarSeg.startTime, speechSeg.startTime)
+                let end = min(diarSeg.endTime, speechSeg.endTime)
+                if end > start {
+                    clipped.append((speakerID: diarSeg.speakerID, startTime: start, endTime: end))
+                }
+            }
+        }
+        return clipped
+    }
+
     /// Extract clips for all unmatched speakers and return candidate info.
     /// Each speaker gets up to `clipsPerSpeaker` distinct samples saved to the recordings
     /// directory, ordered best-first.
@@ -178,6 +220,7 @@ public enum AudioClipExtractor {
     public static func extractSpeakerClips(
         unmatchedSpeakers: [(speakerID: String, temporaryName: String, embedding: [Float], duration: TimeInterval, words: Int)],
         diarizationSegments: [(speakerID: String, startTime: TimeInterval, endTime: TimeInterval)],
+        speechSegments: [(startTime: TimeInterval, endTime: TimeInterval)]? = nil,
         sourceAudioURL: URL,
         outputDirectory: URL,
         clipsPerSpeaker: Int = 3,
@@ -189,6 +232,7 @@ public enum AudioClipExtractor {
             let regions = bestClipRegions(
                 speakerID: speaker.speakerID,
                 diarizationSegments: diarizationSegments,
+                speechSegments: speechSegments,
                 maxCount: clipsPerSpeaker
             )
 

@@ -316,6 +316,65 @@ func runAudioPreprocessorTests() {
     }
 }
 
+// MARK: - AudioClipExtractor Tests
+
+func runAudioClipExtractorTests() {
+    print("\n🔊 AudioClipExtractor Tests")
+
+    test("Clip regions are constrained to VAD speech islands") {
+        let regions = AudioClipExtractor.bestClipRegions(
+            speakerID: "S1",
+            diarizationSegments: [
+                (speakerID: "S1", startTime: 0, endTime: 12),
+            ],
+            speechSegments: [
+                (startTime: 0, endTime: 4),
+                (startTime: 9, endTime: 12),
+            ],
+            maxCount: 3
+        )
+
+        try expectEqual(regions.count, 2)
+        try expectClose(regions[0].startTime, 0)
+        try expectClose(regions[0].endTime, 4)
+        try expectClose(regions[1].startTime, 9)
+        try expectClose(regions[1].endTime, 12)
+    }
+
+    test("Long speech island is centered and capped at max duration") {
+        let regions = AudioClipExtractor.bestClipRegions(
+            speakerID: "S1",
+            diarizationSegments: [
+                (speakerID: "S1", startTime: 0, endTime: 30),
+            ],
+            speechSegments: [
+                (startTime: 3, endTime: 23),
+            ],
+            maxCount: 1
+        )
+
+        try expectEqual(regions.count, 1)
+        try expectClose(regions[0].startTime, 8)
+        try expectClose(regions[0].endTime, 18)
+    }
+
+    test("VAD mode does not combine short fragments across silence") {
+        let regions = AudioClipExtractor.bestClipRegions(
+            speakerID: "S1",
+            diarizationSegments: [
+                (speakerID: "S1", startTime: 0, endTime: 8),
+            ],
+            speechSegments: [
+                (startTime: 0, endTime: 0.7),
+                (startTime: 5, endTime: 5.8),
+            ],
+            maxCount: 1
+        )
+
+        try expect(regions.isEmpty)
+    }
+}
+
 // MARK: - Transcript Writer Tests
 
 func runTranscriptWriterTests() {
@@ -1814,6 +1873,7 @@ struct TestRunner {
         runSpeakerMatcherTests()
         runSegmentMergerTests()
         runAudioPreprocessorTests()
+        runAudioClipExtractorTests()
         runTranscriptWriterTests()
         runStoreTests()
         runPipelineResumeTests()

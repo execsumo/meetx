@@ -1833,6 +1833,9 @@ public final class PipelineProcessor: ObservableObject {
                 let clips = AudioClipExtractor.extractSpeakerClips(
                     unmatchedSpeakers: transcript.unmatchedSpeakers,
                     diarizationSegments: transcript.diarizationSegments,
+                    speechSegments: appTrack?.vadMap.mappings.map {
+                        (startTime: $0.originalStart, endTime: $0.originalEnd)
+                    },
                     sourceAudioURL: job.appAudioPath,
                     outputDirectory: recordingsDir,
                     vadSpeechSegments: vadSegments
