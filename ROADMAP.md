@@ -80,7 +80,6 @@ These stretch the architecture and deserve a spec update before landing.
 ## Technical debt
 
 - **In-meeting note editing.** Today the user edits notes by opening the rendered `.md` directly. A future polish: a "Notes" disclosure on each completed job in the menu bar dropdown that lists captured notes and lets the user edit/delete before the transcript is finalized (or rewrite the `.md` if it's already been written).
-- **Hotkey-collision detection for the note hotkey.** The dictation hotkey recorder validates against a list of system shortcuts; the meeting-note hotkey reuses the same recorder, but neither warns about clashes with the user's other custom hotkeys (Heard's own dictation hotkey, third-party launchers, etc.). Centralize the validator and run both Heard hotkeys through it.
 - **`Views.swift` size.** ~1.9 kLOC for all UI after the Paper design system landed. Split by tab once we're past the early iteration phase.
 - **`SlidingWindowAsrConfig` doesn't expose `TdtConfig`.** The internal `asrConfig` hardcodes `TdtConfig()` (blankId 8192 = v3 default). `AsrManager` auto-adapts the blankId when it detects a mismatch against the loaded model, so v2 models work correctly today — but if FluidAudio ever removes that adaptation, v2 dictation would silently decode incorrectly. Upstream fix: add a `tdtConfig` parameter to `SlidingWindowAsrConfig`.
 
