@@ -23,7 +23,6 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 
 ### Pipeline
 - **Preprocessing concurrency guard.** Both tracks are currently preprocessed concurrently in a `TaskGroup`. On machines with tight memory, this doubles the peak RAM during VAD. Expose a setting to serialize preprocessing.
-- **Progress in the UI.** The menu bar dropdown shows the current stage but no sub-stage progress. Emit sample-count-based progress from `AsrManager.transcribe` through an `AsyncStream`.
 - **Per-job log viewer.** When a job fails, the error string is short. Capture a rolling per-job log (stdout/NSLog lines) and show it in a disclosure view.
 - **Improve speaker table sorting.** Replace the sort dropdown with standard column-header sorting: click a column name (Name / Last Seen / Meeting Count) to sort by that field, click again to toggle descending (default) ↔ ascending. Show a subtle indicator (caret) on the active sort column.
 

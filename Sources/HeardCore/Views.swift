@@ -419,7 +419,11 @@ public struct MenuBarView: View {
         switch job.stage {
         case .queued:        return "Queued — preparing to transcribe"
         case .preprocessing: return "Preprocessing audio"
-        case .transcribing:  return "Transcribing"
+        case .transcribing:
+            if let p = model.pipelineProcessor.transcriptionProgress {
+                return "Transcribing — \(Int(p * 100))%"
+            }
+            return "Transcribing"
         case .diarizing:     return "Identifying speakers"
         case .assigning:     return "Matching speakers"
         case .complete, .failed: return job.stage.displayName

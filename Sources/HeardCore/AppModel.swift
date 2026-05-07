@@ -173,6 +173,9 @@ public final class AppModel: ObservableObject {
         recordingManager.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        pipelineProcessor.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
 
         self.meetingDetector = MeetingDetector(
             onMeetingStarted: { [weak self] snapshot in

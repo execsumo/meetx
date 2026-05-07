@@ -1535,6 +1535,8 @@ public enum TranscriptWriter {
 @MainActor
 public final class PipelineProcessor: ObservableObject {
     @Published public private(set) var isProcessing = false
+    /// 0.0–1.0 while the transcription stage is running; nil at all other times.
+    @Published public private(set) var transcriptionProgress: Double? = nil
 
     private let queueStore: PipelineQueueStore
     private let speakerStore: SpeakerStore
@@ -1662,6 +1664,7 @@ public final class PipelineProcessor: ObservableObject {
         appTranscription = nil
         micTranscription = nil
         appDiarization = nil
+        transcriptionProgress = nil
 
         // Default keepAlive is 0: unload immediately. Back-to-back meetings don't
         // cause rapid reloads because meeting 2 records while meeting 1's pipeline
@@ -1940,12 +1943,21 @@ public final class PipelineProcessor: ObservableObject {
         // v2 ignores this parameter. Heard is English-only per spec.
         let language: Language = .english
 
+        // Weight progress by sample count so the bar advances proportionally to work done.
+        let appCount = appTrack.flatMap { $0.samples.count >= minSamples ? $0.samples.count : nil } ?? 0
+        let micCount = micTrack.flatMap { $0.samples.count >= minSamples ? $0.samples.count : nil } ?? 0
+        let totalTranscribeSamples = appCount + micCount
+        transcriptionProgress = totalTranscribeSamples > 0 ? 0.0 : nil
+
         // Transcribe app track (remote participants) with a fresh decoder state.
         if let track = appTrack, track.samples.count >= minSamples {
             var decoderState = TdtDecoderState.make()
             appTranscription = try await asrManager.transcribe(
                 track.samples, decoderState: &decoderState, language: language
             )
+            if totalTranscribeSamples > 0 {
+                transcriptionProgress = Double(appCount) / Double(totalTranscribeSamples)
+            }
         }
 
         // Transcribe mic track (local user) with its own fresh decoder state.
@@ -1955,6 +1967,8 @@ public final class PipelineProcessor: ObservableObject {
                 track.samples, decoderState: &decoderState, language: language
             )
         }
+
+        transcriptionProgress = nil  // clear before vocabulary boosting / next stage
 
         // Apply CTC-based custom vocabulary boosting as post-processing. Best-effort —
         // never fails the job; original transcripts are kept on any error.
