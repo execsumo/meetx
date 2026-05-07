@@ -287,6 +287,16 @@ public struct MenuBarView: View {
                     }
                 }
 
+                if model.recordingManager.activeSession == nil && !model.meetingDetector.isWatching {
+                    MenuBarRow(title: "Start Recording", icon: "record.circle") {
+                        model.startManualRecording()
+                    }
+                } else if model.recordingManager.activeSession != nil && !model.meetingDetector.isWatching {
+                    MenuBarRow(title: "Stop Recording", icon: "stop.circle") {
+                        model.stopManualRecording()
+                    }
+                }
+
                 if model.settingsStore.settings.dictationEnabled && !model.isDictating {
                     MenuBarRow(title: "Start Dictation", icon: "mic.badge.plus") {
                         model.toggleDictation()
@@ -834,7 +844,7 @@ public struct SettingsView: View {
                             set: { model.setLaunchAtLogin($0) }
                         )
                     )
-                    ToggleRow(title: "Auto-Watch on Launch", isLast: true, isOn: settingsBinding(\.autoWatch))
+                    ToggleRow(title: "Auto-Detect & Record Meetings", isLast: true, isOn: settingsBinding(\.autoWatch))
                 }
             }
 

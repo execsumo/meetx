@@ -468,6 +468,25 @@ public var filteredSpeakers: [SpeakerProfile] {
         meetingDetector.simulateMeetingEnd()
     }
 
+    public func startManualRecording() {
+        guard recordingManager.activeSession == nil else { return }
+        stopDictationIfActive()
+        do {
+            try recordingManager.startRecording(title: "Manual Recording", teamsPID: nil, rosterNames: [])
+            phase = .recording
+            errorMessage = nil
+        } catch {
+            phase = .error
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func stopManualRecording() {
+        guard let session = recordingManager.stopRecording() else { return }
+        pipelineProcessor.enqueueFinishedRecording(session, endedAt: Date())
+        phase = .processing
+    }
+
     public func acknowledgeError() {
         errorMessage = nil
         phase = .dormant
