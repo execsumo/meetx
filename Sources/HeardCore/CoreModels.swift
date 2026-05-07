@@ -346,7 +346,6 @@ public struct AppSettings: Codable, Equatable {
         customVocabulary: [],
         formattingCommands: [
             FormattingCommand(spoken: "new line", written: "\n"),
-            FormattingCommand(spoken: "newline", written: "\n"),
             FormattingCommand(spoken: "new paragraph", written: "\n\n")
         ],
         developerMode: false,

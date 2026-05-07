@@ -873,7 +873,7 @@ public struct SettingsView: View {
                                 .controlSize(.small)
                         }
                     }
-                    CardRow(isLast: true) {
+                    CardRow {
                         HStack {
                             Text("Filename Format")
                                 .font(.system(size: 12, weight: .medium))
@@ -889,29 +889,7 @@ public struct SettingsView: View {
                             .frame(maxWidth: 260)
                         }
                     }
-                }
-            }
-
-            sectionGroup("Permissions") {
-                SettingsCard {
-                    let perms = model.permissionCenter.statuses
-                    ForEach(Array(perms.enumerated()), id: \.offset) { index, perm in
-                        CardRow(isLast: index == perms.count - 1) {
-                            PermissionRow(permission: perm, model: model)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: Transcription
-
-    private var transcriptionSection: some View {
-        paneScroll {
-            sectionGroup("Language Support") {
-                SettingsCard {
-                    CardRow(isLast: false) {
+                    CardRow(isLast: true) {
                         HStack {
                             Text("Supported Languages")
                                 .font(.system(size: 12, weight: .medium))
@@ -923,20 +901,48 @@ public struct SettingsView: View {
                                 }
                             }
                             .labelsHidden()
+                            .controlSize(.small)
                             .frame(maxWidth: 260)
                         }
-                    }
-                    CardRow(isLast: true) {
-                        let version = model.settingsStore.settings.transcriptionModel
-                        Text(version == .v2
-                             ? "English (Optimized) is recommended for English-only meetings."
-                             : "European Languages (Beta) provides broader language support but may use more resources.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(HeardTheme.Paper.mute)
                     }
                 }
             }
 
+            sectionGroup("Permissions") {
+                SettingsCard {
+                    let perms = model.permissionCenter.statuses
+                    ForEach(Array(perms.enumerated()), id: \.offset) { index, perm in
+                        CardRow(isLast: index == perms.count - 1 && permissionCenter.isAccessibilityGranted) {
+                            PermissionRow(permission: perm, model: model)
+                        }
+                    }
+                    if !permissionCenter.isAccessibilityGranted {
+                        CardRow(isLast: true) {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(HeardTheme.Paper.warn)
+                                    .font(.system(size: 11))
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text("Accessibility permission is required for dictation text injection.")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(HeardTheme.Paper.mute)
+                                    Button("Grant Accessibility Access…") {
+                                        TextInjector.ensureAccessibility()
+                                    }
+                                    .controlSize(.small)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Transcription
+
+    private var transcriptionSection: some View {
+        paneScroll {
             sectionGroup("Custom Vocabulary") {
                 SettingsCard {
                     CardRow {
@@ -981,15 +987,9 @@ public struct SettingsView: View {
                 SettingsCard {
                     CardRow(isLast: true) {
                         HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("In-Meeting Note Hotkey")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(HeardTheme.Paper.ink)
-                                Text("Press during a meeting to type a note inserted into the transcript, marked as supplemental.")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(HeardTheme.Paper.mute)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
+                            Text("Meeting Note Hotkey")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(HeardTheme.Paper.ink)
                             Spacer()
                             Text(model.settingsStore.settings.meetingNoteHotkey.displayString)
                                 .font(.system(size: 11, design: .monospaced).weight(.medium))
@@ -998,7 +998,8 @@ public struct SettingsView: View {
                                 .padding(.vertical, 4)
                                 .background(HeardTheme.Paper.surfaceAlt,
                                             in: RoundedRectangle(cornerRadius: 5))
-                            Button("Record…") { isRecordingNoteHotkey = true }
+                            Button("Set Hotkey") { isRecordingNoteHotkey = true }
+                                .controlSize(.small)
                         }
                     }
                 }
@@ -1015,12 +1016,18 @@ public struct SettingsView: View {
                     ToggleRow(
                         title: "Enable Dictation",
                         subtitle: "Press the hotkey to start/stop dictating into any text field.",
-                        isLast: true,
                         isOn: Binding(
                             get: { model.settingsStore.settings.dictationEnabled },
                             set: { model.setDictationEnabled($0) }
                         )
                     )
+                    ToggleRow(
+                        title: "Show Dictation Indicator",
+                        subtitle: "A floating pill appears on screen when dictation is active.",
+                        isLast: true,
+                        isOn: settingsBinding(\.showDictationHUD)
+                    )
+                    .disabled(!model.settingsStore.settings.dictationEnabled)
                 }
             }
 
@@ -1029,6 +1036,7 @@ public struct SettingsView: View {
                     ToggleRow(
                         title: "Push to Talk",
                         subtitle: "Hold the hotkey to dictate, release to stop.",
+                        isLast: false,
                         isOn: Binding(
                             get: { model.settingsStore.settings.pushToTalk },
                             set: { model.setPushToTalk($0) }
@@ -1036,11 +1044,11 @@ public struct SettingsView: View {
                     )
                     .disabled(!model.settingsStore.settings.dictationEnabled)
 
-                    CardRow(isLast: permissionCenter.isAccessibilityGranted) {
+                    CardRow(isLast: true) {
                         HStack {
-                            Text(model.settingsStore.settings.pushToTalk ? "Hold to dictate" : "Toggle dictation")
-                                .font(.system(size: 12))
-                                .foregroundStyle(HeardTheme.Paper.mute)
+                            Text("Dictation Hotkey")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(HeardTheme.Paper.ink)
                             Spacer()
                             Text(model.settingsStore.settings.dictationHotkey.displayString)
                                 .font(.system(size: 11, design: .monospaced).weight(.medium))
@@ -1049,41 +1057,11 @@ public struct SettingsView: View {
                                 .padding(.vertical, 4)
                                 .background(HeardTheme.Paper.surfaceAlt,
                                             in: RoundedRectangle(cornerRadius: 5))
-                            Button("Record…") { isRecordingHotkey = true }
+                            Button("Set Hotkey") { isRecordingHotkey = true }
+                                .controlSize(.small)
                                 .disabled(!model.settingsStore.settings.dictationEnabled)
                         }
                     }
-
-                    if !permissionCenter.isAccessibilityGranted {
-                        CardRow(isLast: true) {
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(HeardTheme.Paper.warn)
-                                    .font(.system(size: 11))
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text("Accessibility permission is required for text injection into other apps.")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(HeardTheme.Paper.mute)
-                                    Button("Grant Accessibility Access…") {
-                                        TextInjector.ensureAccessibility()
-                                    }
-                                    .controlSize(.small)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            sectionGroup("Overlay") {
-                SettingsCard {
-                    ToggleRow(
-                        title: "Show Dictation Indicator",
-                        subtitle: "A floating pill appears on screen when dictation is active.",
-                        isLast: true,
-                        isOn: settingsBinding(\.showDictationHUD)
-                    )
-                    .disabled(!model.settingsStore.settings.dictationEnabled)
                 }
             }
 
