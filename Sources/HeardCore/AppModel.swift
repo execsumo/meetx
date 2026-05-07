@@ -685,4 +685,9 @@ public var filteredSpeakers: [SpeakerProfile] {
             self.skipNaming()
         }
     }
+
+    /// Resets the auto-dismiss timer. Call whenever the user shows activity in the naming window.
+    public func resetNamingAutoDismiss() {
+        startNamingAutoDismiss()
+    }
 }

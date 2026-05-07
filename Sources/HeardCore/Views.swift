@@ -2090,7 +2090,12 @@ public struct SpeakerNamingView: View {
     private func binding(for candidate: NamingCandidate) -> Binding<String> {
         Binding(
             get: { drafts[candidate.id] ?? candidate.suggestedName ?? "" },
-            set: { drafts[candidate.id] = $0 }
+            set: { newValue in
+                drafts[candidate.id] = newValue
+                // Any text edit resets the dormancy timer so an active user isn't interrupted.
+                model.resetNamingAutoDismiss()
+                startCountdown()
+            }
         )
     }
 

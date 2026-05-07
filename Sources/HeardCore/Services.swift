@@ -1819,14 +1819,20 @@ public final class PipelineProcessor: ObservableObject {
 
             NSLog("Heard: Pipeline finished → unmatchedSpeakers=\(transcript.unmatchedSpeakers.count), participants=\(transcript.participants.joined(separator: ", "))")
             if !transcript.unmatchedSpeakers.isEmpty {
-                // Extract audio clips for each unmatched speaker
+                // Extract audio clips for each unmatched speaker.
+                // Pass VAD speech segments so silence gaps within each clip are skipped,
+                // producing continuous speech rather than raw time slices with long pauses.
                 let recordingsDir = FileManager.default.heardAppSupportDirectory
                     .appendingPathComponent("recordings", isDirectory: true)
+                let vadSegments = appTrack?.vadMap.mappings.map {
+                    (startTime: $0.originalStart, endTime: $0.originalEnd)
+                } ?? []
                 let clips = AudioClipExtractor.extractSpeakerClips(
                     unmatchedSpeakers: transcript.unmatchedSpeakers,
                     diarizationSegments: transcript.diarizationSegments,
                     sourceAudioURL: job.appAudioPath,
-                    outputDirectory: recordingsDir
+                    outputDirectory: recordingsDir,
+                    vadSpeechSegments: vadSegments
                 )
 
                 // Build candidates with audio clips, embeddings, and suggested roster names

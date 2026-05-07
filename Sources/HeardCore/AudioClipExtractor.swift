@@ -37,46 +37,65 @@ public enum AudioClipExtractor {
     }
 
     /// Extract a clip from a WAV file at the given time range.
+    ///
+    /// When `vadSpeechSegments` is provided, only frames that overlap with a voiced segment
+    /// are written — silence gaps between segments are skipped, producing a compact clip of
+    /// continuous speech. Falls back to the full range when the list is empty.
+    ///
     /// Returns the URL of the saved clip file, or nil on failure.
     public static func extractClip(
         from sourceURL: URL,
         startTime: TimeInterval,
         endTime: TimeInterval,
-        outputURL: URL
+        outputURL: URL,
+        vadSpeechSegments: [(startTime: TimeInterval, endTime: TimeInterval)] = []
     ) -> URL? {
         do {
             let sourceFile = try AVAudioFile(forReading: sourceURL)
             let sampleRate = sourceFile.processingFormat.sampleRate
             let totalFrames = sourceFile.length
 
-            // Clamp to file bounds
-            let startFrame = AVAudioFramePosition(max(0, startTime * sampleRate))
-            let endFrame = min(AVAudioFramePosition(endTime * sampleRate), totalFrames)
-            let frameCount = AVAudioFrameCount(endFrame - startFrame)
+            // Build the list of sub-ranges to write: voiced portions only, or full range.
+            // Slivers shorter than 20 ms are dropped to avoid near-empty buffers.
+            let subRanges: [(start: TimeInterval, end: TimeInterval)]
+            if vadSpeechSegments.isEmpty {
+                subRanges = [(startTime, min(endTime, Double(totalFrames) / sampleRate))]
+            } else {
+                subRanges = vadSpeechSegments.compactMap { seg in
+                    let lo = max(seg.startTime, startTime)
+                    let hi = min(seg.endTime, endTime)
+                    return hi - lo > 0.02 ? (lo, hi) : nil
+                }
+            }
 
-            guard frameCount > 0 else { return nil }
+            guard !subRanges.isEmpty else { return nil }
 
-            // Seek to start position
-            sourceFile.framePosition = startFrame
-
-            // Read the segment
-            guard let buffer = AVAudioPCMBuffer(
-                pcmFormat: sourceFile.processingFormat,
-                frameCapacity: frameCount
-            ) else { return nil }
-
-            try sourceFile.read(into: buffer, frameCount: frameCount)
-
-            // Write to output file
             let outputFile = try AVAudioFile(
                 forWriting: outputURL,
                 settings: sourceFile.processingFormat.settings,
                 commonFormat: sourceFile.processingFormat.commonFormat,
                 interleaved: sourceFile.processingFormat.isInterleaved
             )
-            try outputFile.write(from: buffer)
 
-            return outputURL
+            var totalWritten: AVAudioFrameCount = 0
+            for range in subRanges {
+                let startFrame = AVAudioFramePosition(max(0, range.start * sampleRate))
+                let endFrame = min(AVAudioFramePosition(range.end * sampleRate), totalFrames)
+                let frameCount = AVAudioFrameCount(max(0, endFrame - startFrame))
+                guard frameCount > 0 else { continue }
+
+                sourceFile.framePosition = startFrame
+                guard let buffer = AVAudioPCMBuffer(
+                    pcmFormat: sourceFile.processingFormat,
+                    frameCapacity: frameCount
+                ) else { continue }
+
+                try sourceFile.read(into: buffer, frameCount: frameCount)
+                try outputFile.write(from: buffer)
+                totalWritten += frameCount
+            }
+
+            return totalWritten > 0 ? outputURL : nil
         } catch {
             NSLog("Heard: AudioClipExtractor failed: \(error)")
             return nil
@@ -152,12 +171,17 @@ public enum AudioClipExtractor {
     /// Extract clips for all unmatched speakers and return candidate info.
     /// Each speaker gets up to `clipsPerSpeaker` distinct samples saved to the recordings
     /// directory, ordered best-first.
+    ///
+    /// `vadSpeechSegments` are the original-audio voiced ranges from the app track's VAD map.
+    /// When provided, silence gaps within each extracted clip are skipped so every playback
+    /// is continuous speech rather than a raw time slice that may include long pauses.
     public static func extractSpeakerClips(
         unmatchedSpeakers: [(speakerID: String, temporaryName: String, embedding: [Float], duration: TimeInterval, words: Int)],
         diarizationSegments: [(speakerID: String, startTime: TimeInterval, endTime: TimeInterval)],
         sourceAudioURL: URL,
         outputDirectory: URL,
-        clipsPerSpeaker: Int = 3
+        clipsPerSpeaker: Int = 3,
+        vadSpeechSegments: [(startTime: TimeInterval, endTime: TimeInterval)] = []
     ) -> [(temporaryName: String, clipURLs: [URL], embedding: [Float], duration: TimeInterval, words: Int)] {
         var results: [(temporaryName: String, clipURLs: [URL], embedding: [Float], duration: TimeInterval, words: Int)] = []
 
@@ -177,7 +201,8 @@ public enum AudioClipExtractor {
                     from: sourceAudioURL,
                     startTime: region.startTime,
                     endTime: region.endTime,
-                    outputURL: clipURL
+                    outputURL: clipURL,
+                    vadSpeechSegments: vadSpeechSegments
                 ) {
                     savedURLs.append(savedURL)
                 }
