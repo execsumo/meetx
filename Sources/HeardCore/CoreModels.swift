@@ -249,7 +249,7 @@ public enum PermissionState: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .unknown: return "Unknown"
         case .granted: return "Granted"
-        case .recommended: return "Recommended"
+        case .recommended: return "Not Granted"
         }
     }
 }

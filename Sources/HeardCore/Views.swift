@@ -814,12 +814,13 @@ public struct SettingsView: View {
                     CardRow(isLast: true) {
                         HStack(spacing: HeardTheme.Spacing.sm) {
                             Text("Your Name")
-                                .font(.system(size: 12))
-                                .foregroundStyle(HeardTheme.Paper.mute)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                            Spacer()
                             TextField("Used as speaker label in transcripts", text: settingsBinding(\.userName))
                                 .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 280)
-                            Spacer()
+                                .multilineTextAlignment(.trailing)
+                                .frame(maxWidth: 220)
                         }
                     }
                 }
@@ -838,22 +839,24 @@ public struct SettingsView: View {
                 }
             }
 
-            sectionGroup("Output Folder") {
+            sectionGroup("Output") {
                 SettingsCard {
                     CardRow {
-                        Text(model.settingsStore.settings.outputDirectory)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(HeardTheme.Paper.mute)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    CardRow {
-                        HStack(spacing: 8) {
-                            Button("Choose…") { model.chooseOutputDirectory() }
-                            Button("Reset") { model.chooseDefaultOutputDirectory() }
-                            Button("Open in Finder") { model.openOutputDirectory() }
+                        HStack {
+                            Text("Save Location")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(HeardTheme.Paper.ink)
                             Spacer()
+                            Text(model.settingsStore.settings.outputDirectory)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(HeardTheme.Paper.mute)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(maxWidth: 180, alignment: .trailing)
+                            Button("Choose…") { model.chooseOutputDirectory() }
+                                .controlSize(.small)
+                            Button("Open") { model.openOutputDirectory() }
+                                .controlSize(.small)
                         }
                     }
                     CardRow(isLast: true) {
