@@ -313,7 +313,7 @@ public struct MenuBarView: View {
             if !model.queueStore.recentJobs.isEmpty {
                 HeardTheme.Paper.borderSoft.frame(height: 0.5)
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text("Recent Meetings")
                         .font(.system(size: 10, weight: .bold))
                         .kerning(0.5)
@@ -321,9 +321,14 @@ public struct MenuBarView: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 4)
 
-                    ForEach(model.queueStore.recentJobs) { job in
-                        JobRow(job: job, model: model)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 1) {
+                            ForEach(model.queueStore.recentJobs) { job in
+                                JobRow(job: job, model: model)
+                            }
+                        }
                     }
+                    .frame(maxHeight: 200)
                 }
                 .padding(.horizontal, 6)
                 .padding(.bottom, 4)

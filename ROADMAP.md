@@ -12,9 +12,6 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 - **CI pipeline.** GitHub Actions workflow: `swift build`, run `HeardTests`, build the bundle, (optionally) notarize, publish artifacts on tag pushes.
 - **Sparkle (or equivalent) update checker.** Explicitly out of scope per `spec.md`, but worth reconsidering once CI publishes releases.
 
-### Menu bar icons & state feedback
-- **Richer icon states (future).** Today the menu bar uses SF Symbols with built-in symbol effects. Once tint/opacity is stable, investigate whether a custom `NSStatusItem` wrapper with frame-by-frame `NSImage` updates would give us more distinct badges (error vs. user-action vs. processing vs. dictating) without adding a dependency.
-- **Menu bar dropdown height.** The `.window` style has a fixed max height; with many jobs queued, the bottom of the panel can clip. Add an internal `ScrollView` for the jobs list.
 
 ### Meeting detection & recording
 - **Audible meeting-start chime (opt-in).** A short non-intrusive sound confirms recording started. Off by default.

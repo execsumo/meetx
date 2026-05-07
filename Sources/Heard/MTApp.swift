@@ -42,14 +42,19 @@ private struct MenuBarIcon: View {
 
     @ViewBuilder
     private var badge: some View {
-        switch model.phase {
-        case .error:
+        if model.phase == .error {
             Circle().fill(.red).frame(width: 5, height: 5)
                 .offset(x: 1, y: -1)
-        case .userAction:
+        } else if model.phase == .userAction {
             Circle().fill(.orange).frame(width: 5, height: 5)
                 .offset(x: 1, y: -1)
-        default:
+        } else if model.phase == .processing {
+            Circle().fill(.yellow).frame(width: 5, height: 5)
+                .offset(x: 1, y: -1)
+        } else if model.isDictating {
+            Circle().fill(.red).frame(width: 5, height: 5)
+                .offset(x: 1, y: -1)
+        } else {
             EmptyView()
         }
     }
