@@ -56,7 +56,7 @@ public enum RosterReader {
 
     /// Attempt to read participant names from the Teams roster.
     /// Returns an empty array if Accessibility isn't granted or the roster isn't visible.
-    public static func readRoster(teamsPID: pid_t?) -> [String] {
+    public static func readRoster(pid teamsPID: pid_t?) -> [String] {
         guard AXIsProcessTrusted() else { return [] }
         guard let pid = teamsPID else { return parseWindowTitle() }
 

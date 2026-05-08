@@ -1129,6 +1129,72 @@ func runTeamsIdentificationTests() {
     }
 }
 
+// MARK: - Meeting App Identification Tests (Teams + Zoom + Webex)
+
+func runMeetingAppIdentificationTests() {
+    print("\n🟢 Meeting App Identification Tests")
+
+    test("Identifies Teams from bundle ID") {
+        try expectEqual(MeetingDetector.meetingAppFor(
+            bundleID: "com.microsoft.teams2", localizedName: nil), .teams)
+        try expectEqual(MeetingDetector.meetingAppFor(
+            bundleID: "com.microsoft.teams", localizedName: nil), .teams)
+    }
+
+    test("Identifies Zoom from bundle ID") {
+        try expectEqual(MeetingDetector.meetingAppFor(
+            bundleID: "us.zoom.xos", localizedName: "zoom.us"), .zoom)
+    }
+
+    test("Identifies Webex from bundle ID") {
+        try expectEqual(MeetingDetector.meetingAppFor(
+            bundleID: "Cisco-Systems.Spark", localizedName: "Webex"), .webex)
+        try expectEqual(MeetingDetector.meetingAppFor(
+            bundleID: "com.cisco.webexmeetingsapp", localizedName: nil), .webex)
+    }
+
+    test("Rejects helper sub-processes for all sources") {
+        try expectEqual(MeetingDetector.meetingAppFor(
+            bundleID: "com.microsoft.teams2.helper", localizedName: "Microsoft Teams Helper"), nil)
+        try expectEqual(MeetingDetector.meetingAppFor(
+            bundleID: "us.zoom.xos.helper", localizedName: "Zoom Helper"), nil)
+        try expectEqual(MeetingDetector.meetingAppFor(
+            bundleID: "Cisco-Systems.Spark.helper", localizedName: nil), nil)
+    }
+
+    test("Rejects unrelated apps") {
+        try expectEqual(MeetingDetector.meetingAppFor(
+            bundleID: "com.apple.Safari", localizedName: "Safari"), nil)
+        try expectEqual(MeetingDetector.meetingAppFor(
+            bundleID: nil, localizedName: nil), nil)
+    }
+
+    test("Strips Teams suffix from window title") {
+        try expectEqual(MeetingDetector.cleanWindowTitle(
+            "Sprint Planning | Microsoft Teams", source: .teams), "Sprint Planning")
+        try expectEqual(MeetingDetector.cleanWindowTitle(
+            "Alice, Bob | Microsoft Teams (Preview)", source: .teams), "Alice, Bob")
+    }
+
+    test("Strips Zoom suffix from window title") {
+        try expectEqual(MeetingDetector.cleanWindowTitle(
+            "Standup - Zoom Workplace", source: .zoom), "Standup")
+        try expectEqual(MeetingDetector.cleanWindowTitle(
+            "Q3 Review – Zoom", source: .zoom), "Q3 Review")
+    }
+
+    test("Strips Webex suffix from window title") {
+        try expectEqual(MeetingDetector.cleanWindowTitle(
+            "Design Sync - Webex", source: .webex), "Design Sync")
+    }
+
+    test("Rejects placeholder window titles for Zoom and Webex") {
+        try expectEqual(MeetingDetector.cleanWindowTitle("Zoom Meeting", source: .zoom), nil)
+        try expectEqual(MeetingDetector.cleanWindowTitle("Zoom", source: .zoom), nil)
+        try expectEqual(MeetingDetector.cleanWindowTitle("Webex Meetings", source: .webex), nil)
+    }
+}
+
 // MARK: - MeetingDetector (live) Tests
 
 @MainActor func runMeetingDetectorLifecycleTests() {
@@ -1929,6 +1995,7 @@ struct TestRunner {
         runPipelineResumeTests()
         runMeetingDetectionTests()
         runTeamsIdentificationTests()
+        runMeetingAppIdentificationTests()
         runMeetingDetectorLifecycleTests()
         await runRetryExecutorTests()
         await runLifetimeRetryCapTests()

@@ -905,6 +905,14 @@ public struct SettingsView: View {
                 }
             }
 
+            sectionGroup("Meeting Detection") {
+                SettingsCard {
+                    ToggleRow(title: "Microsoft Teams", isOn: settingsBinding(\.enableTeamsDetection))
+                    ToggleRow(title: "Zoom", isOn: settingsBinding(\.enableZoomDetection))
+                    ToggleRow(title: "Webex", isLast: true, isOn: settingsBinding(\.enableWebexDetection))
+                }
+            }
+
             sectionGroup("Language") {
                 SettingsCard {
                     CardRow(isLast: true) {

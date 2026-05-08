@@ -12,16 +12,75 @@ import ServiceManagement
 
 // MARK: - Data Types
 
+/// A meeting app Heard knows how to detect via IOKit power assertions.
+public enum MeetingApp: String, CaseIterable, Codable, Sendable {
+    case teams
+    case zoom
+    case webex
+
+    /// Bundle IDs of the main meeting app process (helpers excluded by name suffix in `isHelperBundleID`).
+    public var bundleIDs: Set<String> {
+        switch self {
+        case .teams: return ["com.microsoft.teams", "com.microsoft.teams2"]
+        case .zoom:  return ["us.zoom.xos"]
+        case .webex: return ["Cisco-Systems.Spark", "com.cisco.webexmeetingsapp"]
+        }
+    }
+
+    /// Localized-name fallbacks for builds that ship under an unfamiliar bundle ID.
+    public var processNames: Set<String> {
+        switch self {
+        case .teams:
+            return [
+                "Microsoft Teams",
+                "Microsoft Teams (work or school)",
+                "Microsoft Teams classic",
+            ]
+        case .zoom, .webex:
+            return []
+        }
+    }
+
+    /// Regex stripped from the window title to extract the meeting name.
+    /// Matches the trailing app-name suffix that each client appends.
+    public var titleSuffixPattern: String {
+        switch self {
+        case .teams: return #"\s*\|\s*Microsoft Teams.*$"#
+        case .zoom:  return #"\s*[-–]\s*Zoom.*$"#
+        case .webex: return #"\s*[-–]\s*Webex.*$"#
+        }
+    }
+
+    /// Bare placeholder window titles to ignore (no real meeting name extractable).
+    public var placeholderTitles: Set<String> {
+        switch self {
+        case .teams: return []
+        case .zoom:  return ["Zoom Meeting", "Zoom", "Zoom Workplace"]
+        case .webex: return ["Webex", "Webex Meetings", "Cisco Webex Meetings"]
+        }
+    }
+
+    public var displayName: String {
+        switch self {
+        case .teams: return "Microsoft Teams"
+        case .zoom:  return "Zoom"
+        case .webex: return "Webex"
+        }
+    }
+}
+
 public struct MeetingSnapshot {
     public var title: String
     public var startedAt: Date
-    public var teamsPID: pid_t?
+    public var source: MeetingApp
+    public var meetingPID: pid_t?
     public var rosterNames: [String]
 
-    public init(title: String, startedAt: Date, teamsPID: pid_t?, rosterNames: [String] = []) {
+    public init(title: String, startedAt: Date, source: MeetingApp = .teams, meetingPID: pid_t?, rosterNames: [String] = []) {
         self.title = title
         self.startedAt = startedAt
-        self.teamsPID = teamsPID
+        self.source = source
+        self.meetingPID = meetingPID
         self.rosterNames = rosterNames
     }
 }
@@ -119,38 +178,38 @@ public final class MeetingDetector {
     public private(set) var isWatching = false
     private let onMeetingStarted: @MainActor (MeetingSnapshot) -> Void
     private let onMeetingEnded: @MainActor (MeetingSnapshot) -> Void
+    private let enabledSources: @MainActor () -> Set<MeetingApp>
     private var activeSnapshot: MeetingSnapshot?
     private var pollingTask: Task<Void, Never>?
     private var rosterPollingTask: Task<Void, Never>?
     private var detectionState = MeetingDetectionState()
     private var isSimulated = false
 
-    nonisolated private static let teamsProcessNames: Set<String> = [
-        "Microsoft Teams",
-        "Microsoft Teams (work or school)",
-        "Microsoft Teams classic",
-    ]
+    /// If `bundleID`/`localizedName` identifies the *main* process of one of the known meeting apps,
+    /// return that `MeetingApp`. Helpers (e.g. `com.microsoft.teams2.helper`) return nil.
+    /// Bundle-ID matching is locale-independent; localized-name fallback covers builds with unfamiliar IDs.
+    nonisolated public static func meetingAppFor(bundleID: String?, localizedName: String?) -> MeetingApp? {
+        if let bundleID, bundleID.contains(".helper") { return nil }
+        for app in MeetingApp.allCases {
+            if let bundleID, app.bundleIDs.contains(bundleID) { return app }
+        }
+        for app in MeetingApp.allCases {
+            if let localizedName, app.processNames.contains(localizedName) { return app }
+        }
+        return nil
+    }
 
-    /// Bundle IDs of the main Teams app (not helpers). Bundle-ID matching catches
-    /// non-English macOS locales where `localizedName` is translated.
-    nonisolated private static let teamsBundleIDs: Set<String> = [
-        "com.microsoft.teams",   // classic
-        "com.microsoft.teams2",  // new Teams
-    ]
-
-    /// True if the given app metadata identifies the main Microsoft Teams process.
-    /// Matches by bundle ID first (locale-independent), then by localized name as a fallback
-    /// for builds that ship under an unfamiliar bundle ID.
+    /// Backwards-compatible Teams-specific helper retained for tests and external callers.
     nonisolated public static func isTeamsMainApp(bundleID: String?, localizedName: String?) -> Bool {
-        if let bundleID, teamsBundleIDs.contains(bundleID) { return true }
-        if let localizedName, teamsProcessNames.contains(localizedName) { return true }
-        return false
+        meetingAppFor(bundleID: bundleID, localizedName: localizedName) == .teams
     }
 
     public init(
+        enabledSources: @escaping @MainActor () -> Set<MeetingApp> = { Set(MeetingApp.allCases) },
         onMeetingStarted: @escaping @MainActor (MeetingSnapshot) -> Void,
         onMeetingEnded: @escaping @MainActor (MeetingSnapshot) -> Void
     ) {
+        self.enabledSources = enabledSources
         self.onMeetingStarted = onMeetingStarted
         self.onMeetingEnded = onMeetingEnded
     }
@@ -180,7 +239,7 @@ public final class MeetingDetector {
         pollingTask?.cancel()
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3))
+                try? await Task.sleep(for: .seconds(1))
                 guard let self, !Task.isCancelled else { break }
                 self.poll()
             }
@@ -191,23 +250,38 @@ public final class MeetingDetector {
         // Don't interfere with simulated meetings
         if isSimulated { return }
 
-        let result = Self.detectTeamsMeeting()
-        let action = detectionState.step(now: Date(), detected: result.detected)
+        let enabled = enabledSources()
+
+        // If the active source has been disabled mid-meeting, treat as end-of-meeting.
+        if let snapshot = activeSnapshot, !enabled.contains(snapshot.source) {
+            stopRosterPolling()
+            activeSnapshot = nil
+            detectionState = MeetingDetectionState()
+            onMeetingEnded(snapshot)
+            return
+        }
+
+        let result = Self.detectMeeting(enabled: enabled)
+        let action = detectionState.step(now: Date(), detected: result != nil)
 
         switch action {
         case .ignore:
             return
         case .startMeeting:
-            let title = Self.extractTeamsWindowTitle(pid: result.pid) ?? ""
-            let rosterNames = RosterReader.readRoster(teamsPID: result.pid)
+            guard let result else { return }
+            let title = Self.extractMeetingTitle(pid: result.pid, source: result.source) ?? ""
+            let rosterNames: [String] = result.source == .teams
+                ? RosterReader.readRoster(pid: result.pid)
+                : []
             let snapshot = MeetingSnapshot(
                 title: title,
                 startedAt: Date(),
-                teamsPID: result.pid,
+                source: result.source,
+                meetingPID: result.pid,
                 rosterNames: rosterNames
             )
             activeSnapshot = snapshot
-            startRosterPolling()
+            if result.source == .teams { startRosterPolling() }
             onMeetingStarted(snapshot)
         case .endMeeting:
             guard let snapshot = activeSnapshot else { return }
@@ -217,52 +291,56 @@ public final class MeetingDetector {
         }
     }
 
-    /// Poll IOPMCopyAssertionsByProcess for Teams holding a meeting-related power assertion.
-    /// New Teams (com.microsoft.teams2) uses AssertionTrueType = PreventUserIdleDisplaySleep
-    /// and/or AssertName = "Microsoft Teams Call in progress".
-    private static func detectTeamsMeeting() -> (detected: Bool, pid: pid_t?) {
+    /// Poll IOPMCopyAssertionsByProcess for any enabled meeting app holding a meeting-related
+    /// power assertion. Teams, Zoom, and Webex all raise `PreventUserIdleDisplaySleep` (or the
+    /// older `NoDisplaySleepAssertion`) while a call is active. AssertName containing
+    /// "call in progress" / "meeting in progress" is also accepted as a fallback.
+    private static func detectMeeting(enabled: Set<MeetingApp>) -> (source: MeetingApp, pid: pid_t)? {
+        guard !enabled.isEmpty else { return nil }
+
         let runningApps = NSWorkspace.shared.runningApplications
-        let teamsApps = runningApps.filter { app in
-            isTeamsMainApp(bundleID: app.bundleIdentifier, localizedName: app.localizedName)
+        let candidates: [(NSRunningApplication, MeetingApp)] = runningApps.compactMap { app in
+            guard let source = meetingAppFor(bundleID: app.bundleIdentifier, localizedName: app.localizedName),
+                  enabled.contains(source)
+            else { return nil }
+            return (app, source)
         }
-        guard !teamsApps.isEmpty else { return (false, nil) }
+        guard !candidates.isEmpty else { return nil }
 
         var assertionsByPid: Unmanaged<CFDictionary>?
         guard IOPMCopyAssertionsByProcess(&assertionsByPid) == kIOReturnSuccess,
               let dict = assertionsByPid?.takeRetainedValue() as NSDictionary?
         else {
-            return (false, nil)
+            return nil
         }
 
-        for app in teamsApps {
+        for (app, source) in candidates {
             let pid = app.processIdentifier
             guard let assertions = dict[NSNumber(value: pid)] as? [[String: Any]] else { continue }
             for assertion in assertions {
-                // Check multiple keys — Teams versions use different assertion formats:
-                // - Classic Teams: AssertionType = "PreventUserIdleDisplaySleep"
-                // - New Teams (com.microsoft.teams2): AssertionTrueType = "PreventUserIdleDisplaySleep"
-                //   with AssertionType = "NoDisplaySleepAssertion"
-                // - Also match by assertion name as a reliable fallback
                 let assertionType = assertion["AssertionType"] as? String ?? ""
                 let assertionTrueType = assertion["AssertionTrueType"] as? String ?? ""
-                let assertName = assertion["AssertName"] as? String ?? ""
+                let assertName = (assertion["AssertName"] as? String ?? "").lowercased()
 
                 let isDisplaySleep = assertionType == "PreventUserIdleDisplaySleep"
                     || assertionTrueType == "PreventUserIdleDisplaySleep"
                     || assertionType == "NoDisplaySleepAssertion"
-                let isTeamsCall = assertName.lowercased().contains("call in progress")
+                let isCallInProgress = assertName.contains("call in progress")
+                    || assertName.contains("meeting in progress")
+                    || assertName.contains("in a meeting")
 
-                if isDisplaySleep || isTeamsCall {
-                    return (true, pid)
+                if isDisplaySleep || isCallInProgress {
+                    return (source, pid)
                 }
             }
         }
-        return (false, nil)
+        return nil
     }
 
-    /// Extract the meeting title from the Teams window via Accessibility API.
-    /// Requires Accessibility permission; returns nil if unavailable.
-    private static func extractTeamsWindowTitle(pid: pid_t?) -> String? {
+    /// Extract the meeting title from a meeting-app window via Accessibility API.
+    /// Strips the trailing app-name suffix (` | Microsoft Teams`, ` - Zoom`, etc.).
+    /// Returns nil if AX is denied, no window matches, or the title is just a placeholder.
+    private static func extractMeetingTitle(pid: pid_t?, source: MeetingApp) -> String? {
         guard AXIsProcessTrusted(), let pid else { return nil }
 
         let app = AXUIElementCreateApplication(pid)
@@ -274,27 +352,40 @@ public final class MeetingDetector {
         for window in windows {
             var titleRef: AnyObject?
             guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef) == .success,
-                  let title = titleRef as? String,
-                  title.contains(" | Microsoft Teams")
+                  let title = titleRef as? String, !title.isEmpty
             else { continue }
-            let cleaned = title.replacingOccurrences(of: #"\s*\|\s*Microsoft Teams.*$"#, with: "", options: .regularExpression)
-            return cleaned.isEmpty ? nil : cleaned
+            if let cleaned = cleanWindowTitle(title, source: source) { return cleaned }
         }
         return nil
+    }
+
+    /// Pure helper exposed for tests: strip the source's title suffix and reject placeholders.
+    nonisolated public static func cleanWindowTitle(_ title: String, source: MeetingApp) -> String? {
+        let cleaned = title.replacingOccurrences(
+            of: source.titleSuffixPattern,
+            with: "",
+            options: .regularExpression
+        ).trimmingCharacters(in: .whitespaces)
+        if cleaned.isEmpty { return nil }
+        if source.placeholderTitles.contains(cleaned) { return nil }
+        return cleaned
     }
 
     // MARK: - Roster Polling
 
     /// Poll the Teams roster every 15 seconds during an active meeting to accumulate participant names.
+    /// Only runs for Teams meetings — Zoom/Webex roster scraping is not implemented.
     private func startRosterPolling() {
         rosterPollingTask?.cancel()
         rosterPollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(15))
-                guard let self, !Task.isCancelled, self.activeSnapshot != nil else { break }
-                let names = RosterReader.readRoster(teamsPID: self.activeSnapshot?.teamsPID)
+                guard let self, !Task.isCancelled,
+                      let snapshot = self.activeSnapshot,
+                      snapshot.source == .teams
+                else { break }
+                let names = RosterReader.readRoster(pid: snapshot.meetingPID)
                 if !names.isEmpty {
-                    // Accumulate unique names across polls (participants may join/leave)
                     let existing = Set(self.activeSnapshot?.rosterNames ?? [])
                     let newNames = names.filter { !existing.contains($0) }
                     if !newNames.isEmpty {
@@ -314,7 +405,7 @@ public final class MeetingDetector {
 
     public func simulateMeetingStart(title: String) {
         isSimulated = true
-        let snapshot = MeetingSnapshot(title: title, startedAt: Date(), teamsPID: nil)
+        let snapshot = MeetingSnapshot(title: title, startedAt: Date(), source: .teams, meetingPID: nil)
         activeSnapshot = snapshot
         onMeetingStarted(snapshot)
     }
@@ -383,12 +474,12 @@ public final class RecordingManager: ObservableObject {
     /// Called once when the self-test confirms non-zero app audio is flowing.
     public var onAppAudioCaptureConfirmed: (() -> Void)?
 
-    /// The Teams PID, title, and roster for the current recording (needed for re-start on split).
-    private var currentTeamsPID: pid_t?
+    /// The meeting-app PID, title, and roster for the current recording (needed for re-start on split).
+    private var currentMeetingPID: pid_t?
     private var currentTitle: String = ""
     private var currentRosterNames: [String] = []
 
-    public func startRecording(title: String, teamsPID: pid_t?, rosterNames: [String] = []) throws {
+    public func startRecording(title: String, meetingPID: pid_t?, rosterNames: [String] = []) throws {
         guard activeSession == nil else { return }
 
         let stamp = Formatting.recordingFileFormatter.string(from: Date())
@@ -402,9 +493,9 @@ public final class RecordingManager: ObservableObject {
         // Set up mic recording first
         try setupMicRecording(to: micPath)
 
-        // Set up app audio recording if we have a Teams PID
+        // Set up app audio recording if we have a meeting-app PID
         appAudioTapFailed = false
-        if let pid = teamsPID {
+        if let pid = meetingPID {
             do {
                 try setupAppAudioRecording(pid: pid, to: appPath)
             } catch {
@@ -421,7 +512,7 @@ public final class RecordingManager: ObservableObject {
             micDelay = 0
         }
 
-        currentTeamsPID = teamsPID
+        currentMeetingPID = meetingPID
         currentTitle = title
         currentRosterNames = rosterNames
 
@@ -988,13 +1079,13 @@ public final class RecordingManager: ObservableObject {
         // Enqueue the finished session
         onMaxDurationReached?(session)
 
-        // Restart recording if we had a Teams PID (meeting still active)
-        let pid = currentTeamsPID
+        // Restart recording if we had a meeting-app PID (meeting still active)
+        let pid = currentMeetingPID
         let title = currentTitle
         let roster = currentRosterNames
         if pid != nil {
             do {
-                try startRecording(title: title + " (cont.)", teamsPID: pid, rosterNames: roster)
+                try startRecording(title: title + " (cont.)", meetingPID: pid, rosterNames: roster)
             } catch {
                 NSLog("Heard: Failed to restart recording after max duration: \(error)")
             }

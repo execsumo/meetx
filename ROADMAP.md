@@ -1,6 +1,6 @@
 # Heard — Roadmap
 
-A living list of planned improvements and stretch ideas. Ordered by how close each item is to the current scope of `spec.md`. Anything that would change the product (cloud APIs, LLM integration, non-English transcription, Zoom/Webex support) belongs in [What's explicitly NOT in scope](#whats-explicitly-not-in-scope) unless the spec itself changes.
+A living list of planned improvements and stretch ideas. Ordered by how close each item is to the current scope of `spec.md`. Anything that would change the product (cloud APIs, LLM integration, non-English transcription, Google Meet support) belongs in [What's explicitly NOT in scope](#whats-explicitly-not-in-scope) unless the spec itself changes.
 
 ## Near-term — polish & stability
 
@@ -9,7 +9,6 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 ### Distribution & install
 - **DMG packaging.** Add a `scripts/dmg.sh` that builds, signs, notarizes, and stamps out a DMG for GitHub Releases.
 - **Homebrew Cask.** Draft a Cask formula so the app is installable via `brew install --cask heard` once the DMG pipeline is live.
-- **CI pipeline.** GitHub Actions workflow: `swift build`, run `HeardTests`, build the bundle, (optionally) notarize, publish artifacts on tag pushes.
 - **Sparkle (or equivalent) update checker.** Explicitly out of scope per `spec.md`, but worth reconsidering once CI publishes releases.
 
 
@@ -48,7 +47,6 @@ These surfaces are specified in the design handoff but not yet implemented:
 
 These stretch the architecture and deserve a spec update before landing.
 
-- **Zoom / Webex / Google Meet detection.** Today Heard only recognises Teams power assertions. A pluggable "meeting source" abstraction could add others without touching the pipeline. Out of scope in `spec.md` as of v1.
 - **Live captions during the meeting.** The spec explicitly disables this to keep the Mac cool during calls; revisit once Apple Silicon idle cost improves or the user can opt-in per-meeting.
 - **Sortformer diarizer.** FluidAudio includes `SortformerDiarizer` (~11% DER vs ~17.7% for current LS-EEND + WeSpeaker). Blocked by an embedding gap: Sortformer's `DiarizerTimeline` carries no per-segment speaker embeddings, which the cross-meeting speaker identity system requires. Unblock by adding a WeSpeaker embedding-extraction pass on Sortformer's segments before converting to `DiarizationResult`. Selectable per-meeting size makes sense (Sortformer has 4 fixed speaker slots).
 - **Live speaker identification during the meeting.** Would need a streaming diarizer; today's LS-EEND is offline.
@@ -66,7 +64,7 @@ These are intentional exclusions. Don't add them without a spec update.
 - LLM integration (no Claude, OpenAI, or local LLM)
 - Cloud APIs of any kind
 - Non-English transcription / multilingual models
-- Zoom / Webex / Google Meet support
+- Google Meet support (browser-tab; no per-meeting power assertion to detect)
 - Manual app recording (pick any app)
 - System-wide audio capture
 - Multiple output formats beyond Markdown

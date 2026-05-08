@@ -179,8 +179,20 @@ public final class AppModel: ObservableObject {
         pipelineProcessor.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        settingsStore.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
 
         self.meetingDetector = MeetingDetector(
+            enabledSources: { [weak self] in
+                guard let self else { return Set(MeetingApp.allCases) }
+                var enabled: Set<MeetingApp> = []
+                let s = self.settingsStore.settings
+                if s.enableTeamsDetection { enabled.insert(.teams) }
+                if s.enableZoomDetection { enabled.insert(.zoom) }
+                if s.enableWebexDetection { enabled.insert(.webex) }
+                return enabled
+            },
             onMeetingStarted: { [weak self] snapshot in
                 guard let self else { return }
                 // Stop dictation before recording starts — mic should not transcribe
@@ -189,7 +201,7 @@ public final class AppModel: ObservableObject {
                 do {
                     try self.recordingManager.startRecording(
                         title: snapshot.title,
-                        teamsPID: snapshot.teamsPID,
+                        meetingPID: snapshot.meetingPID,
                         rosterNames: snapshot.rosterNames
                     )
                     self.phase = .recording
@@ -468,7 +480,7 @@ public var filteredSpeakers: [SpeakerProfile] {
         guard recordingManager.activeSession == nil else { return }
         stopDictationIfActive()
         do {
-            try recordingManager.startRecording(title: "Manual Recording", teamsPID: nil, rosterNames: [])
+            try recordingManager.startRecording(title: "Manual Recording", meetingPID: nil, rosterNames: [])
             phase = .recording
             errorMessage = nil
         } catch {

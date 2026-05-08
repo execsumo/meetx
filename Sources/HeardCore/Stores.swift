@@ -175,7 +175,10 @@ public final class SettingsStore: ObservableObject {
             transcriptionModel: transcriptionModel,
             showDictationHUD: defaults.object(forKey: "showDictationHUD") as? Bool ?? base.showDictationHUD,
             filenameFormat: filenameFormat,
-            meetingNoteHotkey: meetingNoteHotkey
+            meetingNoteHotkey: meetingNoteHotkey,
+            enableTeamsDetection: defaults.object(forKey: "enableTeamsDetection") as? Bool ?? base.enableTeamsDetection,
+            enableZoomDetection: defaults.object(forKey: "enableZoomDetection") as? Bool ?? base.enableZoomDetection,
+            enableWebexDetection: defaults.object(forKey: "enableWebexDetection") as? Bool ?? base.enableWebexDetection
         )
     }
 
@@ -201,6 +204,9 @@ public final class SettingsStore: ObservableObject {
         if let data = try? JSONEncoder().encode(settings.meetingNoteHotkey) {
             defaults.set(data, forKey: "meetingNoteHotkey")
         }
+        defaults.set(settings.enableTeamsDetection, forKey: "enableTeamsDetection")
+        defaults.set(settings.enableZoomDetection, forKey: "enableZoomDetection")
+        defaults.set(settings.enableWebexDetection, forKey: "enableWebexDetection")
     }
 }
 

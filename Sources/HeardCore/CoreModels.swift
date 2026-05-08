@@ -323,6 +323,12 @@ public struct AppSettings: Codable, Equatable {
     public var meetingNoteHotkey: HotkeyCombo
     /// Whether to show the app icon in the Dock.
     public var showDockIcon: Bool
+    /// Detect Microsoft Teams meetings (classic + new Teams).
+    public var enableTeamsDetection: Bool
+    /// Detect Zoom meetings.
+    public var enableZoomDetection: Bool
+    /// Detect Cisco Webex meetings.
+    public var enableWebexDetection: Bool
 
     public static let `default` = AppSettings(
         userName: "",
@@ -343,7 +349,10 @@ public struct AppSettings: Codable, Equatable {
         showDictationHUD: false,
         filenameFormat: .isoDate,
         meetingNoteHotkey: .meetingNoteDefault,
-        showDockIcon: false
+        showDockIcon: false,
+        enableTeamsDetection: true,
+        enableZoomDetection: true,
+        enableWebexDetection: true
     )
 
     public init(
@@ -362,7 +371,10 @@ public struct AppSettings: Codable, Equatable {
         showDictationHUD: Bool = false,
         filenameFormat: FilenameFormat = .isoDate,
         meetingNoteHotkey: HotkeyCombo = .meetingNoteDefault,
-        showDockIcon: Bool = false
+        showDockIcon: Bool = false,
+        enableTeamsDetection: Bool = true,
+        enableZoomDetection: Bool = true,
+        enableWebexDetection: Bool = true
     ) {
         self.userName = userName
         self.launchAtLogin = launchAtLogin
@@ -380,6 +392,9 @@ public struct AppSettings: Codable, Equatable {
         self.filenameFormat = filenameFormat
         self.meetingNoteHotkey = meetingNoteHotkey
         self.showDockIcon = showDockIcon
+        self.enableTeamsDetection = enableTeamsDetection
+        self.enableZoomDetection = enableZoomDetection
+        self.enableWebexDetection = enableWebexDetection
     }
 }
 

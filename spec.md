@@ -2,7 +2,7 @@
 
 ## Overview
 
-Build a macOS menu bar application that automatically detects Microsoft Teams meetings, records dual-source audio (app + microphone), transcribes speech on-device using CoreML models on the Apple Neural Engine, identifies speakers via diarization and persistent voice profiles, and outputs clean Markdown transcripts.
+Build a macOS menu bar application that automatically detects native meetings (Microsoft Teams, Zoom, Webex), records dual-source audio (app + microphone), transcribes speech on-device using CoreML models on the Apple Neural Engine, identifies speakers via diarization and persistent voice profiles, and outputs clean Markdown transcripts.
 
 Everything runs on-device. There is no cloud dependency, no LLM integration, no external API. The app is invisible by design — it launches at login, sits in the menu bar, and handles meeting documentation silently.
 
@@ -63,16 +63,23 @@ RAM:     ~80 MB          ~80 MB               ~80 MB         ~800 MB peak    ~80
 
 ### Detection Strategy
 
-**Power assertion monitoring** is the sole detection method. Poll `IOPMCopyAssertionsByProcess()` every 3 seconds. Look for `PreventUserIdleDisplaySleep` assertions from Teams process names ("Microsoft Teams", "Microsoft Teams (work or school)", "Microsoft Teams classic"). This works without Screen Recording permission and is sandbox-safe.
+**Power assertion monitoring** is the sole detection method. Poll `IOPMCopyAssertionsByProcess()` every 3 seconds. Look for `PreventUserIdleDisplaySleep` assertions from any of the supported meeting apps:
 
-- **Start recording** when 2 consecutive polls (6 seconds) detect a matching power assertion
+- **Microsoft Teams** — bundle IDs `com.microsoft.teams` (classic), `com.microsoft.teams2` (new Teams)
+- **Zoom** — bundle ID `us.zoom.xos`
+- **Webex** — bundle IDs `Cisco-Systems.Spark`, `com.cisco.webexmeetingsapp`
+
+Each source can be enabled/disabled independently in General settings. All three are on by default. This works without Screen Recording permission and is sandbox-safe.
+
+- **Start recording** when 2 consecutive polls (2 seconds) detect a matching power assertion
 - **Stop recording** when the power assertion disappears. Stop immediately (no grace period). Apply a 5-second cooldown before allowing re-detection.
 
 ### Meeting Title Extraction
 
-When a meeting is detected, read the Teams window title via `CGWindowListCopyWindowInfo()` to extract the meeting name for use in the output filename. Match the pattern `.+\s+\|\s+Microsoft Teams` and strip the ` | Microsoft Teams` suffix.
+When a meeting is detected, read the meeting-app window title via Accessibility / `CGWindowListCopyWindowInfo()` to extract the meeting name for use in the output filename. Strip the trailing app-name suffix (` | Microsoft Teams`, ` - Zoom`, ` - Webex`).
 
-- If Screen Recording permission is not granted, the window title will be unavailable — fall back to the timestamp as the filename
+- If Accessibility permission is not granted, the window title will be unavailable — fall back to the timestamp as the filename
+- Bare placeholder titles for Zoom (`Zoom Meeting`, `Zoom Workplace`) and Webex (`Webex Meetings`) are treated as missing — fall back to the timestamp
 - This is a best-effort metadata read, not a detection signal — the power assertion is authoritative for start/stop
 
 ---
@@ -515,7 +522,7 @@ In the Settings window, leave a grayed-out **Dictation** tab. This prevents need
 - LLM integration (no Claude, no OpenAI, no local LLM)
 - File import / batch processing of existing recordings
 - macOS notifications
-- Zoom or Webex support
+- Google Meet support (browser-tab; no per-meeting power assertion to detect)
 - Manual app recording (pick any app)
 - Mute detection
 - Multiple output formats (Markdown only)
