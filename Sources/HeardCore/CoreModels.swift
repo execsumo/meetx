@@ -268,22 +268,6 @@ public struct PermissionStatus: Identifiable, Equatable {
     }
 }
 
-public enum SpeakerSortMode: String, CaseIterable, Identifiable {
-    case name
-    case lastSeen
-    case meetingCount
-
-    public var id: String { rawValue }
-
-    public var displayName: String {
-        switch self {
-        case .name: return "Name"
-        case .lastSeen: return "Last Seen"
-        case .meetingCount: return "Meeting Count"
-        }
-    }
-}
-
 public enum FilenameFormat: String, Codable, CaseIterable, Identifiable {
     case isoDate = "YYYY-MM-DD_Name"
     case isoDateTime = "YYYY-MM-DD_HH-mm_Name"

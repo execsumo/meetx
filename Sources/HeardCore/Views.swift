@@ -723,6 +723,9 @@ public struct SettingsView: View {
     @State private var commandSpokenDraft = ""
     @State private var commandWrittenDraft = ""
     @StateObject private var clipPlayer = SpeakerClipController()
+    @State private var tableSortOrder: [KeyPathComparator<SpeakerProfile>] = [
+        KeyPathComparator(\.lastSeen, order: .reverse)
+    ]
 
     public init(model: AppModel) {
         self.model = model
@@ -1218,15 +1221,6 @@ public struct SettingsView: View {
                                 in: RoundedRectangle(cornerRadius: HeardTheme.Radius.inline))
                     .frame(maxWidth: 260)
 
-                    Picker("Sort", selection: $model.speakerSortMode) {
-                        ForEach(SpeakerSortMode.allCases) { sortMode in
-                            Text(sortMode.displayName).tag(sortMode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(maxWidth: 240)
-
                     Spacer()
 
                     Button("Merge Selected") { model.mergeSelectedSpeakers() }
@@ -1238,17 +1232,19 @@ public struct SettingsView: View {
 
             HeardTheme.Paper.border.frame(height: 0.5)
 
-            Table(model.filteredSpeakers, selection: $model.mergeSelection) {
+            Table(model.filteredSpeakers.sorted(using: tableSortOrder),
+                  selection: $model.mergeSelection,
+                  sortOrder: $tableSortOrder) {
                 TableColumn("Voice") { speaker in
                     SpeakerVoiceCell(speaker: speaker, controller: clipPlayer)
                 }
                 .width(min: 80, ideal: 100, max: 130)
-                TableColumn("Name") { speaker in
+                TableColumn("Name", value: \.name) { speaker in
                     InlineEditableText(value: speaker.name) { newValue in
                         model.renameSpeaker(id: speaker.id, to: newValue)
                     }
                 }
-                TableColumn("Meetings") { speaker in
+                TableColumn("Meetings", value: \.meetingCount) { speaker in
                     Text("\(speaker.meetingCount)").monospacedDigit()
                 }
                 .width(min: 60, ideal: 70, max: 90)
@@ -1261,7 +1257,7 @@ public struct SettingsView: View {
                         Text("\(minutes)m").monospacedDigit()
                     }
                 }
-                TableColumn("Last Seen") { speaker in
+                TableColumn("Last Seen", value: \.lastSeen) { speaker in
                     Text(speaker.lastSeen.formatted(date: .abbreviated, time: .omitted))
                 }
             }

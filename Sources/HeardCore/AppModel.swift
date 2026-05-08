@@ -12,7 +12,6 @@ public final class AppModel: ObservableObject {
     private var namingDismissTask: Task<Void, Never>?
     @Published public var selectedSettingsTab: SettingsTab = .general
     @Published public var speakerFilter = ""
-    @Published public var speakerSortMode: SpeakerSortMode = .lastSeen
     @Published public var vocabularyDraft = ""
     @Published public var mergeSelection = Set<UUID>()
 
@@ -212,17 +211,8 @@ public final class AppModel: ObservableObject {
     }
 
 public var filteredSpeakers: [SpeakerProfile] {
-        let filtered = speakerStore.speakers.filter {
+        speakerStore.speakers.filter {
             speakerFilter.isEmpty || $0.name.localizedCaseInsensitiveContains(speakerFilter)
-        }
-
-        switch speakerSortMode {
-        case .name:
-            return filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        case .lastSeen:
-            return filtered.sorted { $0.lastSeen > $1.lastSeen }
-        case .meetingCount:
-            return filtered.sorted { $0.meetingCount > $1.meetingCount }
         }
     }
 
