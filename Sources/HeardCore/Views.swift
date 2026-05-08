@@ -745,7 +745,8 @@ public struct SettingsView: View {
                     model.updateDictationHotkey(combo)
                     isRecordingHotkey = false
                 },
-                onCancel: { isRecordingHotkey = false }
+                onCancel: { isRecordingHotkey = false },
+                conflictingHotkey: model.settingsStore.settings.meetingNoteHotkey
             )
             .preferredColorScheme(.light)
         }
@@ -755,7 +756,8 @@ public struct SettingsView: View {
                     model.updateMeetingNoteHotkey(combo)
                     isRecordingNoteHotkey = false
                 },
-                onCancel: { isRecordingNoteHotkey = false }
+                onCancel: { isRecordingNoteHotkey = false },
+                conflictingHotkey: model.settingsStore.settings.dictationHotkey
             )
         }
     }
@@ -1653,11 +1655,12 @@ private struct AboutBadge: View {
 private struct HotkeyRecorderView: View {
     let onCommit: (HotkeyCombo) -> Void
     let onCancel: () -> Void
+    var conflictingHotkey: HotkeyCombo? = nil
 
     @State private var captured: HotkeyCombo? = nil
     @State private var monitorToken: Any? = nil
 
-    private enum ValidationKind { case noModifier, forbidden, singleModifier }
+    private enum ValidationKind { case noModifier, forbidden, singleModifier, heardConflict }
 
     var body: some View {
         VStack(spacing: HeardTheme.Spacing.lg) {
@@ -1734,7 +1737,7 @@ private struct HotkeyRecorderView: View {
     private func isBlocked(_ combo: HotkeyCombo?) -> Bool {
         guard let combo else { return false }
         let v = validate(combo)
-        return v == .noModifier || v == .forbidden
+        return v == .noModifier || v == .forbidden || v == .heardConflict
     }
 
     private func isFunctionKeyCode(_ code: UInt16) -> Bool {
@@ -1751,6 +1754,7 @@ private struct HotkeyRecorderView: View {
         let modCount = modifiers.filter { flags.contains($0) }.count
         if modCount == 0 && !isFunctionKeyCode(combo.keyCode) { return .noModifier }
         if isForbiddenCombo(combo) { return .forbidden }
+        if let other = conflictingHotkey, combo == other { return .heardConflict }
         if modCount == 1 && !isFunctionKeyCode(combo.keyCode) { return .singleModifier }
         return nil
     }
@@ -1759,6 +1763,7 @@ private struct HotkeyRecorderView: View {
         switch kind {
         case .noModifier:     return "A modifier key (⌘, ⌃, ⌥, or ⇧) is required."
         case .forbidden:      return "This shortcut is reserved by macOS. Please choose another."
+        case .heardConflict:  return "This shortcut is already used by another Heard hotkey. Please choose another."
         case .singleModifier: return "Single-modifier shortcuts may conflict with app shortcuts."
         }
     }

@@ -20,9 +20,6 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 - **Preprocessing concurrency guard.** Both tracks are currently preprocessed concurrently in a `TaskGroup`. On machines with tight memory, this doubles the peak RAM during VAD. Expose a setting to serialize preprocessing.
 - **Per-job log viewer.** When a job fails, the error string is short. Capture a rolling per-job log (stdout/NSLog lines) and show it in a disclosure view.
 
-### Custom vocabulary
-- **Phrase boosting, not just terms.** The CTC path tokenizes whole strings, so multi-word phrases already work — but the UI suggests "terms" and the 3-char minimum blocks short acronyms. Reconsider the minimum and label the field "Terms or short phrases".
-
 ## Mid-term — within-spec enhancements
 
 Features that fit the on-device, single-process philosophy but require more code than a polish pass.
@@ -40,8 +37,6 @@ Features that fit the on-device, single-process philosophy but require more code
 - **Dictation transcript log.** Optional history of dictated text (with timestamps and target-app name) for recovery if injection drops characters.
 
 ### Preferences & UI
-- **Localize the settings UI.** The spec says English-only for transcription, but the app chrome could be localized.
-- **Keyboard shortcuts in the dropdown.** ⌘S (start/stop watching), ⌘N (name speakers), ⌘, (settings), ⌘Q (quit) — mentioned in the spec but currently only partially wired.
 - **Re-ordered settings tabs.** "General" is crowded today. Consider splitting out a "Transcription" tab (custom vocabulary + output folder + CTC keep-alive) once we have more to put there.
 
 ### Design ideas (from `design_handoff_app_surfaces`)
@@ -62,14 +57,11 @@ These stretch the architecture and deserve a spec update before landing.
 - **Live captions during the meeting.** The spec explicitly disables this to keep the Mac cool during calls; revisit once Apple Silicon idle cost improves or the user can opt-in per-meeting.
 - **Sortformer diarizer.** FluidAudio includes `SortformerDiarizer` (~11% DER vs ~17.7% for current LS-EEND + WeSpeaker). Blocked by an embedding gap: Sortformer's `DiarizerTimeline` carries no per-segment speaker embeddings, which the cross-meeting speaker identity system requires. Unblock by adding a WeSpeaker embedding-extraction pass on Sortformer's segments before converting to `DiarizationResult`. Selectable per-meeting size makes sense (Sortformer has 4 fixed speaker slots).
 - **Live speaker identification during the meeting.** Would need a streaming diarizer; today's LS-EEND is offline.
-- **Meeting note summaries.** Requires an LLM, which is explicitly out of scope. Revisit only if a local, on-device model ships that meets the quality bar.
-- **Batch import of existing recordings.** Drag-and-drop a `.wav` / `.m4a` file into the menu bar dropdown to run the same pipeline on it. Explicitly out of scope in v1.
-- **Android / Windows companion.** Heard is macOS-only by design. Not planned.
 
 ## Technical debt
 
 - **In-meeting note editing.** Today the user edits notes by opening the rendered `.md` directly. A future polish: a "Notes" disclosure on each completed job in the menu bar dropdown that lists captured notes and lets the user edit/delete before the transcript is finalized (or rewrite the `.md` if it's already been written).
-- **Hotkey-collision detection for the note hotkey.** The dictation hotkey recorder validates against a list of system shortcuts; the meeting-note hotkey reuses the same recorder, but neither warns about clashes with the user's other custom hotkeys (Heard's own dictation hotkey, third-party launchers, etc.). Centralize the validator and run both Heard hotkeys through it.
+- ~~**Hotkey-collision detection for the note hotkey.**~~ Done — `HotkeyRecorderView` now accepts a `conflictingHotkey` parameter; each recorder is passed the other Heard hotkey, and the validator blocks saving with a clear error if the two would collide.
 - **`Views.swift` size.** ~1.9 kLOC for all UI after the Paper design system landed. Split by tab once we're past the early iteration phase.
 - **`SlidingWindowAsrConfig` doesn't expose `TdtConfig`.** The internal `asrConfig` hardcodes `TdtConfig()` (blankId 8192 = v3 default). `AsrManager` auto-adapts the blankId when it detects a mismatch against the loaded model, so v2 models work correctly today — but if FluidAudio ever removes that adaptation, v2 dictation would silently decode incorrectly. Upstream fix: add a `tdtConfig` parameter to `SlidingWindowAsrConfig`.
 
