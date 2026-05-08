@@ -25,7 +25,6 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 Features that fit the on-device, single-process philosophy but require more code than a polish pass.
 
 ### Speaker management
-- **Speaker merge preview.** Before committing a merge, show both speakers' recent meeting counts, first/last-seen dates, and a diff of embeddings count. When merging, keep the name that is not a "Speaker X" placeholder (prefer the real human-given name).
 - **Manual speaker split.** Inverse of merge — split a speaker profile if the user realizes two voices were collapsed.
 - **Bulk-delete / archive old speakers.** Speakers with no meeting activity in N months.
 
@@ -36,14 +35,10 @@ Features that fit the on-device, single-process philosophy but require more code
 ### Dictation
 - **Dictation transcript log.** Optional history of dictated text (with timestamps and target-app name) for recovery if injection drops characters.
 
-### Preferences & UI
-- **Re-ordered settings tabs.** "General" is crowded today. Consider splitting out a "Transcription" tab (custom vocabulary + output folder + CTC keep-alive) once we have more to put there.
-
 ### Design ideas (from `design_handoff_app_surfaces`)
 These surfaces are specified in the design handoff but not yet implemented:
 - **First-run onboarding flow.** A 620×480px four-step permission wizard (Microphone → Screen Recording → System Audio → Accessibility) with progress indicator and Grant/Skip buttons. Shows on first launch before the main UI.
 - **About as a modal sheet.** The design specifies About as a dimmed overlay sheet (380px wide) over the app, rather than a settings tab. Current tab is functional; this would be a polish upgrade.
-- **Empty and error state views.** Dedicated centered states for three cases: no speakers yet (people icon, surfaceAlt well, "Open transcripts" CTA); microphone denied (mic icon, badSoft well, "Open System Settings…" CTA); model download failed (warn icon, badSoft well, "Retry download" CTA).
 
 ### Diagnostics
 - **In-app diagnostics pane.** Promote `scripts/diagnose.swift` into a hidden developer pane that surfaces Teams process IDs, active power assertions, CoreAudio device tree, and the most recent tap status.
@@ -61,7 +56,6 @@ These stretch the architecture and deserve a spec update before landing.
 ## Technical debt
 
 - **In-meeting note editing.** Today the user edits notes by opening the rendered `.md` directly. A future polish: a "Notes" disclosure on each completed job in the menu bar dropdown that lists captured notes and lets the user edit/delete before the transcript is finalized (or rewrite the `.md` if it's already been written).
-- ~~**Hotkey-collision detection for the note hotkey.**~~ Done — `HotkeyRecorderView` now accepts a `conflictingHotkey` parameter; each recorder is passed the other Heard hotkey, and the validator blocks saving with a clear error if the two would collide.
 - **`Views.swift` size.** ~1.9 kLOC for all UI after the Paper design system landed. Split by tab once we're past the early iteration phase.
 - **`SlidingWindowAsrConfig` doesn't expose `TdtConfig`.** The internal `asrConfig` hardcodes `TdtConfig()` (blankId 8192 = v3 default). `AsrManager` auto-adapts the blankId when it detects a mismatch against the loaded model, so v2 models work correctly today — but if FluidAudio ever removes that adaptation, v2 dictation would silently decode incorrectly. Upstream fix: add a `tdtConfig` parameter to `SlidingWindowAsrConfig`.
 
