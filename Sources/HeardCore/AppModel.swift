@@ -663,18 +663,27 @@ public var filteredSpeakers: [SpeakerProfile] {
     public func mergeSelectedSpeakers() {
         let ids = Array(mergeSelection)
         guard ids.count == 2 else { return }
-        
-        if let primary = speakerStore.speakers.first(where: { $0.id == ids[0] }),
-           let secondary = speakerStore.speakers.first(where: { $0.id == ids[1] }) {
-            
-            // Prompt the user before retroactively renaming
+
+        // Prefer the human-given name: if ids[0] is a placeholder but ids[1] is not,
+        // swap so the real name survives as primary.
+        var primaryID = ids[0]
+        var secondaryID = ids[1]
+        if let p0 = speakerStore.speakers.first(where: { $0.id == ids[0] }),
+           let p1 = speakerStore.speakers.first(where: { $0.id == ids[1] }),
+           SpeakerMatcher.isPlaceholderName(p0.name) && !SpeakerMatcher.isPlaceholderName(p1.name) {
+            primaryID = ids[1]
+            secondaryID = ids[0]
+        }
+
+        if let primary = speakerStore.speakers.first(where: { $0.id == primaryID }),
+           let secondary = speakerStore.speakers.first(where: { $0.id == secondaryID }) {
             if askUserToUpdateTranscripts(oldName: secondary.name, newName: primary.name) {
                 let outputDir = URL(fileURLWithPath: settingsStore.settings.outputDirectory, isDirectory: true)
                 TranscriptWriter.renameSpeakerInDirectory(outputDir, from: secondary.name, to: primary.name)
             }
         }
 
-        speakerStore.merge(primaryID: ids[0], secondaryID: ids[1])
+        speakerStore.merge(primaryID: primaryID, secondaryID: secondaryID)
         mergeSelection.removeAll()
     }
 

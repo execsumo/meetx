@@ -265,6 +265,7 @@ public final class SpeakerStore: ObservableObject {
         var primary = speakers[primaryIndex]
         let secondary = speakers[secondaryIndex]
         primary.embeddings.append(contentsOf: secondary.embeddings)
+        primary.audioClipURLs.append(contentsOf: secondary.audioClipURLs)
         primary.firstSeen = min(primary.firstSeen, secondary.firstSeen)
         primary.lastSeen = max(primary.lastSeen, secondary.lastSeen)
         primary.meetingCount += secondary.meetingCount
