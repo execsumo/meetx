@@ -251,8 +251,16 @@ public struct MenuBarView: View {
 
     public init(model: AppModel) { self.model = model }
 
+    // Height available on screen below the menu bar, minus the pinned footer (~72 px) and
+    // a small margin so the panel never sits flush against the Dock or screen edge.
+    private var scrollableMaxHeight: CGFloat {
+        let screenHeight = NSScreen.main?.visibleFrame.height ?? 600
+        return max(200, screenHeight - 160)
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
+            // Pinned top — banners and status header always visible
             if let errorMessage = model.errorMessage {
                 errorBanner(errorMessage)
             }
@@ -270,74 +278,79 @@ public struct MenuBarView: View {
 
             HeardTheme.Paper.borderSoft.frame(height: 0.5)
 
-            VStack(spacing: 1) {
-                if model.settingsStore.settings.developerMode {
-                    if model.recordingManager.activeSession == nil {
-                        MenuBarRow(title: "Simulate Meeting", icon: "bolt.circle") {
-                            model.simulateMeeting()
-                        }
-                    } else {
-                        MenuBarRow(title: "End Simulation", icon: "stop.circle") {
-                            model.endSimulatedMeeting()
-                        }
-                    }
-                }
-
-                if !model.namingCandidates.isEmpty {
-                    MenuBarRow(title: "Name Speakers…", icon: "person.badge.plus", accent: true) {
-                        openWindow(id: "speaker-naming")
-                        NSApp.activate(ignoringOtherApps: true)
-                    }
-                }
-
-                if model.recordingManager.activeSession == nil && !model.meetingDetector.isWatching {
-                    MenuBarRow(title: "Start Recording", icon: "record.circle") {
-                        model.startManualRecording()
-                    }
-                } else if model.recordingManager.activeSession != nil && !model.meetingDetector.isWatching {
-                    MenuBarRow(title: "Stop Recording", icon: "stop.circle") {
-                        model.stopManualRecording()
-                    }
-                }
-
-                if model.settingsStore.settings.dictationEnabled && !model.isDictating
-                    && model.recordingManager.activeSession == nil {
-                    MenuBarRow(title: "Start Dictation", icon: "mic.badge.plus") {
-                        model.toggleDictation()
-                    }
-                }
-
-                MenuBarRow(title: "Open Transcripts", icon: "folder") {
-                    model.openOutputDirectory()
-                }
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-
-            if !model.queueStore.recentJobs.isEmpty {
-                HeardTheme.Paper.borderSoft.frame(height: 0.5)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Recent Meetings")
-                        .font(.system(size: 10, weight: .bold))
-                        .kerning(0.5)
-                        .foregroundStyle(HeardTheme.Paper.mute)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 4)
-
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 1) {
-                            ForEach(model.queueStore.recentJobs) { job in
-                                JobRow(job: job, model: model)
+            // Scrollable middle — actions then jobs; actions anchor to top so they
+            // stay reachable even when the jobs list is long.
+            ScrollView {
+                VStack(spacing: 0) {
+                    VStack(spacing: 1) {
+                        if model.settingsStore.settings.developerMode {
+                            if model.recordingManager.activeSession == nil {
+                                MenuBarRow(title: "Simulate Meeting", icon: "bolt.circle") {
+                                    model.simulateMeeting()
+                                }
+                            } else {
+                                MenuBarRow(title: "End Simulation", icon: "stop.circle") {
+                                    model.endSimulatedMeeting()
+                                }
                             }
                         }
-                    }
-                    .frame(maxHeight: 200)
-                }
-                .padding(.horizontal, 6)
-                .padding(.bottom, 4)
-            }
 
+                        if !model.namingCandidates.isEmpty {
+                            MenuBarRow(title: "Name Speakers…", icon: "person.badge.plus", accent: true) {
+                                openWindow(id: "speaker-naming")
+                                NSApp.activate(ignoringOtherApps: true)
+                            }
+                        }
+
+                        if model.recordingManager.activeSession == nil && !model.meetingDetector.isWatching {
+                            MenuBarRow(title: "Start Recording", icon: "record.circle") {
+                                model.startManualRecording()
+                            }
+                        } else if model.recordingManager.activeSession != nil && !model.meetingDetector.isWatching {
+                            MenuBarRow(title: "Stop Recording", icon: "stop.circle") {
+                                model.stopManualRecording()
+                            }
+                        }
+
+                        if model.settingsStore.settings.dictationEnabled && !model.isDictating
+                            && model.recordingManager.activeSession == nil {
+                            MenuBarRow(title: "Start Dictation", icon: "mic.badge.plus") {
+                                model.toggleDictation()
+                            }
+                        }
+
+                        MenuBarRow(title: "Open Transcripts", icon: "folder") {
+                            model.openOutputDirectory()
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+
+                    if !model.queueStore.recentJobs.isEmpty {
+                        HeardTheme.Paper.borderSoft.frame(height: 0.5)
+
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("Recent Meetings")
+                                .font(.system(size: 10, weight: .bold))
+                                .kerning(0.5)
+                                .foregroundStyle(HeardTheme.Paper.mute)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 4)
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                ForEach(model.queueStore.recentJobs) { job in
+                                    JobRow(job: job, model: model)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.bottom, 4)
+                    }
+                }
+            }
+            .frame(maxHeight: scrollableMaxHeight)
+
+            // Pinned bottom — always reachable
             HeardTheme.Paper.borderSoft.frame(height: 0.5)
 
             VStack(spacing: 1) {
