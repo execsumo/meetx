@@ -1,0 +1,16 @@
+{
+  "role": "AXApplication",
+  "children": [
+    {
+      "role": "AXWindow",
+      "title": "Active call | Microsoft Teams",
+      "children": [
+        {
+          "role": "AXGroup",
+          "identifier": "roster-list",
+          "children": []
+        }
+      ]
+    }
+  ]
+}

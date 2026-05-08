@@ -1,0 +1,29 @@
+{
+  "role": "AXApplication",
+  "children": [
+    {
+      "role": "AXWindow",
+      "title": "Sprint Planning | Microsoft Teams",
+      "children": [
+        {
+          "role": "AXGroup",
+          "description": "people-pane",
+          "children": [
+            { "role": "AXStaticText", "value": "Alice Smith" },
+            { "role": "AXStaticText", "value": "Bob Jones" },
+            { "role": "AXStaticText", "value": "Carol Liu" },
+            { "role": "AXStaticText", "value": "David Kim" },
+            { "role": "AXStaticText", "value": "Emma Wilson" },
+            { "role": "AXStaticText", "value": "Frank Chen" },
+            { "role": "AXStaticText", "value": "Grace Park" },
+            { "role": "AXStaticText", "value": "Henry Brown" },
+            { "role": "AXStaticText", "value": "Isabelle Martin" },
+            { "role": "AXStaticText", "value": "Jack Davis" },
+            { "role": "AXStaticText", "value": "People" },
+            { "role": "AXStaticText", "value": "Search" }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -20,12 +20,8 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 - **Preprocessing concurrency guard.** Both tracks are currently preprocessed concurrently in a `TaskGroup`. On machines with tight memory, this doubles the peak RAM during VAD. Expose a setting to serialize preprocessing.
 - **Per-job log viewer.** When a job fails, the error string is short. Capture a rolling per-job log (stdout/NSLog lines) and show it in a disclosure view.
 
-### Testing
-- **Golden-file tests for `RosterReader` AX traversal.** The parser and filter are covered, but the actual DOM walk (`findRosterPanel`, `findParticipantList`, `extractTextChildren`) is still untested because it's bound to live `AXUIElement`. Introduce a small protocol wrapper around the AX tree that can be fed captured JSON snapshots from real Teams meetings (various states: pre-join lobby, 2-person call, 10-person call, roster panel open vs collapsed). This is the single highest-value remaining roster test — the one most likely to catch breakage when Teams updates its DOM.
-
 ### Custom vocabulary
 - **Phrase boosting, not just terms.** The CTC path tokenizes whole strings, so multi-word phrases already work — but the UI suggests "terms" and the 3-char minimum blocks short acronyms. Reconsider the minimum and label the field "Terms or short phrases".
-- **Import/export vocabulary list.** JSON round-trip via drag-and-drop.
 
 ## Mid-term — within-spec enhancements
 
@@ -34,8 +30,6 @@ Features that fit the on-device, single-process philosophy but require more code
 ### Speaker management
 - **Speaker merge preview.** Before committing a merge, show both speakers' recent meeting counts, first/last-seen dates, and a diff of embeddings count. When merging, keep the name that is not a "Speaker X" placeholder (prefer the real human-given name).
 - **Manual speaker split.** Inverse of merge — split a speaker profile if the user realizes two voices were collapsed.
-- **Per-speaker colors in the transcript.** Lightweight Markdown footer or HTML export with consistent per-speaker colors.
-- **Voice clip gallery.** Store a single 10-second reference clip per known speaker so the user can play it back from Settings → Speakers to verify identity.
 - **Bulk-delete / archive old speakers.** Speakers with no meeting activity in N months.
 
 ### Pipeline & output
@@ -44,8 +38,6 @@ Features that fit the on-device, single-process philosophy but require more code
 
 ### Dictation
 - **Dictation transcript log.** Optional history of dictated text (with timestamps and target-app name) for recovery if injection drops characters.
-- **Per-app enable list.** Disable dictation in banking apps, password managers, or other sensitive fields.
-- **Vocab-scoped dictation.** Reuse the custom-vocab boosting (already wired into `SlidingWindowAsrManager`) in a "coding mode" with camelCase / snake_case post-processing.
 
 ### Preferences & UI
 - **Localize the settings UI.** The spec says English-only for transcription, but the app chrome could be localized.

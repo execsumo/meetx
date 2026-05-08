@@ -1,0 +1,21 @@
+{
+  "role": "AXApplication",
+  "children": [
+    {
+      "role": "AXWindow",
+      "title": "Active call | Microsoft Teams",
+      "children": [
+        {
+          "role": "AXGroup",
+          "identifier": "roster-list",
+          "children": [
+            { "role": "AXStaticText", "value": "Alice Smith" },
+            { "role": "AXStaticText", "value": "Bob Jones" },
+            { "role": "AXButton", "value": "Mute" },
+            { "role": "AXButton", "value": "Remove participant" }
+          ]
+        }
+      ]
+    }
+  ]
+}

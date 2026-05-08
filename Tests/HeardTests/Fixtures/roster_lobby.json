@@ -1,0 +1,9 @@
+{
+  "role": "AXApplication",
+  "children": [
+    {
+      "role": "AXWindow",
+      "title": "Join meeting | Microsoft Teams"
+    }
+  ]
+}

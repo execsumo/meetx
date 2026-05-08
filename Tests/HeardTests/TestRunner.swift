@@ -1692,6 +1692,56 @@ func runRosterReaderTests() {
 
 // MARK: - Main
 
+// MARK: - RosterReader AX Traversal Tests (golden-file)
+
+func runRosterReaderAXTests() {
+    print("\n👥 RosterReader AX Traversal Tests")
+
+    test("Strategy 1: finds 2 names via roster-list identifier") {
+        let tree = try loadFixture("roster_2person_open.json")
+        let names = RosterReader.readRosterFromNode(tree)
+        try expectEqual(names.sorted(), ["Alice Smith", "Bob Jones"])
+    }
+
+    test("Strategy 1: finds 10 names via people-pane description, filters control strings") {
+        let tree = try loadFixture("roster_10person_open.json")
+        let names = RosterReader.readRosterFromNode(tree)
+        // "People" and "Search" are filtered out by filterNames
+        try expectEqual(names.count, 10)
+        try expect(names.contains("Alice Smith"), "missing Alice Smith")
+        try expect(names.contains("Jack Davis"),  "missing Jack Davis")
+        try expect(!names.contains("People"),     "'People' should be filtered")
+        try expect(!names.contains("Search"),     "'Search' should be filtered")
+    }
+
+    test("Strategy 2: falls back to AXList when no identifier matches") {
+        let tree = try loadFixture("roster_axlist_fallback.json")
+        let names = RosterReader.readRosterFromNode(tree)
+        try expectEqual(names.sorted(), ["Alice Smith", "Bob Jones", "Carol Liu"])
+    }
+
+    test("Row containers: extracts first text child per row, ignores button labels") {
+        let tree = try loadFixture("roster_row_containers.json")
+        let names = RosterReader.readRosterFromNode(tree)
+        try expectEqual(names.sorted(), ["Alice Smith", "Bob Jones", "Carol Liu"])
+        try expect(!names.contains("Mute"),             "button label leaked")
+        try expect(!names.contains("Remove participant"), "button label leaked")
+        try expect(!names.contains("More actions"),     "button label leaked")
+    }
+
+    test("Pre-join lobby: empty tree returns no names") {
+        let tree = try loadFixture("roster_lobby.json")
+        let names = RosterReader.readRosterFromNode(tree)
+        try expectEqual(names, [])
+    }
+
+    test("Panel collapsed: roster-list identifier found but no text children — returns empty") {
+        let tree = try loadFixture("roster_panel_collapsed.json")
+        let names = RosterReader.readRosterFromNode(tree)
+        try expectEqual(names, [])
+    }
+}
+
 // MARK: - SegmentDeduplicator Tests
 
 func runSegmentDeduplicatorTests() {
@@ -1884,6 +1934,7 @@ struct TestRunner {
         await runLifetimeRetryCapTests()
         runSpeakerMatcherEdgeTests()
         runRosterReaderTests()
+        runRosterReaderAXTests()
         runSegmentDeduplicatorTests()
 
         print("\n" + String(repeating: "─", count: 50))

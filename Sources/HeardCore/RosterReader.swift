@@ -1,6 +1,47 @@
 import AppKit
 import Foundation
 
+// MARK: - AX Tree Abstraction
+
+/// Minimal abstraction over an accessibility tree node.
+/// `AXUIElement` is adapted via `AXUIElementNode`; tests use `MockAXNode` loaded from JSON.
+public protocol AXNode {
+    var axRole: String? { get }
+    var axIdentifier: String? { get }
+    var axDescription: String? { get }
+    var axValue: String? { get }
+    var axTitle: String? { get }
+    var axChildren: [any AXNode]? { get }
+}
+
+// MARK: - Live AX adapter
+
+private struct AXUIElementNode: AXNode {
+    private let element: AXUIElement
+    init(_ element: AXUIElement) { self.element = element }
+
+    private func string(_ key: CFString) -> String? {
+        var ref: AnyObject?
+        guard AXUIElementCopyAttributeValue(element, key, &ref) == .success else { return nil }
+        return ref as? String
+    }
+
+    var axRole: String?        { string(kAXRoleAttribute as CFString) }
+    var axIdentifier: String?  { string(kAXIdentifierAttribute as CFString) }
+    var axDescription: String? { string(kAXDescriptionAttribute as CFString) }
+    var axValue: String?       { string(kAXValueAttribute as CFString) }
+    var axTitle: String?       { string(kAXTitleAttribute as CFString) }
+
+    var axChildren: [any AXNode]? {
+        var ref: AnyObject?
+        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &ref) == .success,
+              let elements = ref as? [AXUIElement] else { return nil }
+        return elements.map { AXUIElementNode($0) as any AXNode }
+    }
+}
+
+// MARK: - RosterReader
+
 /// Reads participant names from the Microsoft Teams roster panel via Accessibility APIs.
 /// Requires Accessibility permission (System Settings → Privacy → Accessibility).
 public enum RosterReader {
@@ -19,27 +60,24 @@ public enum RosterReader {
         guard AXIsProcessTrusted() else { return [] }
         guard let pid = teamsPID else { return parseWindowTitle() }
 
-        let app = AXUIElementCreateApplication(pid)
+        let app = AXUIElementNode(AXUIElementCreateApplication(pid))
+        let names = readRosterFromNode(app)
+        return names.isEmpty ? parseWindowTitle() : names
+    }
 
-        // Strategy 1: Find the roster panel by known identifiers
-        if let names = findRosterPanel(in: app) {
-            return names
-        }
-
-        // Strategy 2: Search for AXList/AXTable containers with participant-like content
-        if let names = findParticipantList(in: app) {
-            return names
-        }
-
-        // Strategy 3: Parse window title pattern "Name1, Name2 | Microsoft Teams"
-        return parseWindowTitle()
+    /// Testable entry point — accepts any AX tree node, including mocks.
+    /// Runs Strategy 1 (known identifiers) then Strategy 2 (AXList containers).
+    /// Does NOT include Strategy 3 (window title parsing), which requires live NSWorkspace.
+    public static func readRosterFromNode(_ app: any AXNode) -> [String] {
+        if let names = findRosterPanel(in: app) { return names }
+        if let names = findParticipantList(in: app) { return names }
+        return []
     }
 
     // MARK: - Strategy 1: Known Roster Panel Identifiers
 
-    private static func findRosterPanel(in app: AXUIElement) -> [String]? {
-        // Look for windows, then search for known roster identifiers
-        guard let windows = getChildren(of: app) else { return nil }
+    private static func findRosterPanel(in app: any AXNode) -> [String]? {
+        guard let windows = app.axChildren else { return nil }
 
         for window in windows {
             if let names = searchForRosterByIdentifier(in: window) {
@@ -50,12 +88,8 @@ public enum RosterReader {
         return nil
     }
 
-    private static func searchForRosterByIdentifier(in element: AXUIElement) -> [String]? {
-        // Check if this element has a roster-related identifier
-        let identifier = getStringAttribute(element, attribute: kAXIdentifierAttribute as CFString)
-            ?? getStringAttribute(element, attribute: kAXDescriptionAttribute as CFString)
-            ?? ""
-
+    private static func searchForRosterByIdentifier(in element: any AXNode) -> [String]? {
+        let identifier = element.axIdentifier ?? element.axDescription ?? ""
         let rosterIdentifiers = ["roster-list", "people-pane", "roster", "participants-list", "participant-list"]
         let isRosterContainer = rosterIdentifiers.contains(where: { identifier.lowercased().contains($0) })
 
@@ -63,17 +97,16 @@ public enum RosterReader {
             return extractTextChildren(from: element)
         }
 
-        // Recurse into children (limit depth to avoid excessive traversal)
         return searchChildrenForRoster(in: element, depth: 0, maxDepth: 8)
     }
 
-    private static func searchChildrenForRoster(in element: AXUIElement, depth: Int, maxDepth: Int) -> [String]? {
+    private static func searchChildrenForRoster(in element: any AXNode, depth: Int, maxDepth: Int) -> [String]? {
         guard depth < maxDepth else { return nil }
-        guard let children = getChildren(of: element) else { return nil }
+        guard let children = element.axChildren else { return nil }
 
         for child in children {
-            let identifier = getStringAttribute(child, attribute: kAXIdentifierAttribute as CFString) ?? ""
-            let desc = getStringAttribute(child, attribute: kAXDescriptionAttribute as CFString) ?? ""
+            let identifier = child.axIdentifier ?? ""
+            let desc = child.axDescription ?? ""
             let combined = (identifier + " " + desc).lowercased()
 
             let rosterIdentifiers = ["roster", "people-pane", "participant"]
@@ -93,8 +126,8 @@ public enum RosterReader {
 
     // MARK: - Strategy 2: Find AXList/AXTable with Multiple Text Rows
 
-    private static func findParticipantList(in app: AXUIElement) -> [String]? {
-        guard let windows = getChildren(of: app) else { return nil }
+    private static func findParticipantList(in app: any AXNode) -> [String]? {
+        guard let windows = app.axChildren else { return nil }
 
         for window in windows {
             if let names = findListContainers(in: window, depth: 0, maxDepth: 10) {
@@ -105,19 +138,17 @@ public enum RosterReader {
         return nil
     }
 
-    private static func findListContainers(in element: AXUIElement, depth: Int, maxDepth: Int) -> [String]? {
+    private static func findListContainers(in element: any AXNode, depth: Int, maxDepth: Int) -> [String]? {
         guard depth < maxDepth else { return nil }
 
-        let role = getStringAttribute(element, attribute: kAXRoleAttribute as CFString) ?? ""
-
-        // Look for list/table/outline containers
+        let role = element.axRole ?? ""
         if role == "AXList" || role == "AXTable" || role == "AXOutline" {
             if let names = extractTextChildren(from: element), names.count >= 2 {
                 return names
             }
         }
 
-        guard let children = getChildren(of: element) else { return nil }
+        guard let children = element.axChildren else { return nil }
         for child in children {
             if let result = findListContainers(in: child, depth: depth + 1, maxDepth: maxDepth) {
                 return result
@@ -162,7 +193,6 @@ public enum RosterReader {
             "Microsoft Teams classic",
         ]
 
-        // Find Teams PIDs from running applications
         let teamsPIDs = NSWorkspace.shared.runningApplications
             .filter { app in
                 guard let name = app.localizedName else { return false }
@@ -189,40 +219,24 @@ public enum RosterReader {
         return []
     }
 
-    // MARK: - AX Helpers
+    // MARK: - Shared helpers
 
-    private static func getChildren(of element: AXUIElement) -> [AXUIElement]? {
-        var value: AnyObject?
-        let result = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value)
-        guard result == .success, let children = value as? [AXUIElement] else { return nil }
-        return children
-    }
-
-    private static func getStringAttribute(_ element: AXUIElement, attribute: CFString) -> String? {
-        var value: AnyObject?
-        let result = AXUIElementCopyAttributeValue(element, attribute, &value)
-        guard result == .success else { return nil }
-        return value as? String
-    }
-
-    private static func extractTextChildren(from element: AXUIElement) -> [String]? {
-        guard let children = getChildren(of: element) else { return nil }
+    private static func extractTextChildren(from element: any AXNode) -> [String]? {
+        guard let children = element.axChildren else { return nil }
         var texts: [String] = []
 
         for child in children {
             // Try direct value/title
-            if let text = getStringAttribute(child, attribute: kAXValueAttribute as CFString)
-                ?? getStringAttribute(child, attribute: kAXTitleAttribute as CFString) {
+            if let text = child.axValue ?? child.axTitle {
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty { texts.append(trimmed) }
                 continue
             }
 
             // Try first text child (for row containers)
-            if let subChildren = getChildren(of: child) {
+            if let subChildren = child.axChildren {
                 for sub in subChildren {
-                    if let text = getStringAttribute(sub, attribute: kAXValueAttribute as CFString)
-                        ?? getStringAttribute(sub, attribute: kAXTitleAttribute as CFString) {
+                    if let text = sub.axValue ?? sub.axTitle {
                         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                         if !trimmed.isEmpty {
                             texts.append(trimmed)
@@ -241,13 +255,9 @@ public enum RosterReader {
         var seen = Set<String>()
         return names.filter { name in
             let lower = name.lowercased()
-            // Skip control strings
             guard !controlStrings.contains(lower) else { return false }
-            // Skip very short or very long entries (likely not names)
             guard name.count >= 2 && name.count <= 60 else { return false }
-            // Skip entries that look like UI elements
             guard !lower.hasPrefix("button") && !lower.hasPrefix("icon") else { return false }
-            // Deduplicate
             return seen.insert(lower).inserted
         }
     }
