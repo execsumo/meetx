@@ -326,11 +326,11 @@ public struct MenuBarView: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 4)
 
-                    if !model.queueStore.recentJobs.isEmpty {
+                    if !model.queueStore.recentTranscripts.isEmpty {
                         HeardTheme.Paper.borderSoft.frame(height: 0.5)
 
                         VStack(alignment: .leading, spacing: 0) {
-                            Text("Recent Meetings")
+                            Text("Recent Transcripts")
                                 .font(.system(size: 10, weight: .bold))
                                 .kerning(0.5)
                                 .foregroundStyle(HeardTheme.Paper.mute)
@@ -338,7 +338,7 @@ public struct MenuBarView: View {
                                 .padding(.vertical, 4)
 
                             VStack(alignment: .leading, spacing: 1) {
-                                ForEach(model.queueStore.recentJobs) { job in
+                                ForEach(model.queueStore.recentTranscripts) { job in
                                     JobRow(job: job, model: model)
                                 }
                             }
