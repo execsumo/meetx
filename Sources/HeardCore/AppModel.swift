@@ -41,6 +41,10 @@ public final class AppModel: ObservableObject {
     public var meetingNoteHotkeyManager: HotkeyManager! = nil
 
     private var cancellables = Set<AnyCancellable>()
+    private var stageWatchdogTimer: Timer?
+    // 90 minutes is generous for any realistic workload (4-hour meeting transcription
+    // on slow hardware). A genuine FluidAudio hang shows up well within this window.
+    private static let maxStageSeconds: TimeInterval = 90 * 60
 
     public static func bootstrap() -> AppModel {
         try? FileManager.default.ensureHeardDirectories()
@@ -220,6 +224,19 @@ public final class AppModel: ObservableObject {
                 self.phase = .processing
             }
         )
+
+        stageWatchdogTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.checkForStuckPipelineStage()
+        }
+    }
+
+    private func checkForStuckPipelineStage() {
+        guard pipelineProcessor.isProcessing,
+              let job = queueStore.processingJob,
+              let stageStart = job.stageStartTime,
+              Date().timeIntervalSince(stageStart) > Self.maxStageSeconds else { return }
+        NSLog("Heard: pipeline stage '\(job.stage)' stuck for >90 min — aborting job")
+        pipelineProcessor.abortAndFailCurrentJob()
     }
 
 public var filteredSpeakers: [SpeakerProfile] {

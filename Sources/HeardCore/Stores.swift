@@ -350,6 +350,13 @@ public final class PipelineQueueStore: ObservableObject {
         Array(jobs.sorted(by: { $0.endTime > $1.endTime }).prefix(3))
     }
 
+    public var recentTranscripts: [PipelineJob] {
+        Array(jobs
+            .filter { $0.stage == .complete && $0.transcriptPath != nil }
+            .sorted(by: { $0.endTime > $1.endTime })
+            .prefix(3))
+    }
+
     /// Prepare persisted queue state for a fresh app launch. Any job not in a
     /// terminal state (`.complete`) is re-queued: failed jobs get another attempt,
     /// and mid-stage jobs (orphaned by a crash) are recovered. `retryCount` is

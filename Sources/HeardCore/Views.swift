@@ -326,11 +326,11 @@ public struct MenuBarView: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 4)
 
-                    if !model.queueStore.recentJobs.isEmpty {
+                    if !model.queueStore.recentTranscripts.isEmpty {
                         HeardTheme.Paper.borderSoft.frame(height: 0.5)
 
                         VStack(alignment: .leading, spacing: 0) {
-                            Text("Recent Meetings")
+                            Text("Recent Transcripts")
                                 .font(.system(size: 10, weight: .bold))
                                 .kerning(0.5)
                                 .foregroundStyle(HeardTheme.Paper.mute)
@@ -338,7 +338,7 @@ public struct MenuBarView: View {
                                 .padding(.vertical, 4)
 
                             VStack(alignment: .leading, spacing: 1) {
-                                ForEach(model.queueStore.recentJobs) { job in
+                                ForEach(model.queueStore.recentTranscripts) { job in
                                     JobRow(job: job, model: model)
                                 }
                             }
@@ -731,8 +731,11 @@ public struct PulsingDot: View {
 public struct SettingsView: View {
     @ObservedObject public var model: AppModel
     @ObservedObject private var permissionCenter: PermissionCenter
-    @State private var isRecordingHotkey = false
-    @State private var isRecordingNoteHotkey = false
+    private enum HotkeyTarget: Identifiable {
+        case dictation, meetingNote
+        var id: Self { self }
+    }
+    @State private var hotkeyTarget: HotkeyTarget? = nil
     @State private var commandSpokenDraft = ""
     @State private var commandWrittenDraft = ""
     @StateObject private var clipPlayer = SpeakerClipController()
@@ -752,26 +755,29 @@ public struct SettingsView: View {
         }
         .frame(minWidth: 880, minHeight: 600)
         .preferredColorScheme(.light)
-        .sheet(isPresented: $isRecordingHotkey) {
-            HotkeyRecorderView(
-                onCommit: { combo in
-                    model.updateDictationHotkey(combo)
-                    isRecordingHotkey = false
-                },
-                onCancel: { isRecordingHotkey = false },
-                conflictingHotkey: model.settingsStore.settings.meetingNoteHotkey
-            )
-            .preferredColorScheme(.light)
-        }
-        .sheet(isPresented: $isRecordingNoteHotkey) {
-            HotkeyRecorderView(
-                onCommit: { combo in
-                    model.updateMeetingNoteHotkey(combo)
-                    isRecordingNoteHotkey = false
-                },
-                onCancel: { isRecordingNoteHotkey = false },
-                conflictingHotkey: model.settingsStore.settings.dictationHotkey
-            )
+        .sheet(item: $hotkeyTarget) { target in
+            switch target {
+            case .dictation:
+                HotkeyRecorderView(
+                    onCommit: { combo in
+                        model.updateDictationHotkey(combo)
+                        hotkeyTarget = nil
+                    },
+                    onCancel: { hotkeyTarget = nil },
+                    conflictingHotkey: model.settingsStore.settings.meetingNoteHotkey
+                )
+                .preferredColorScheme(.light)
+            case .meetingNote:
+                HotkeyRecorderView(
+                    onCommit: { combo in
+                        model.updateMeetingNoteHotkey(combo)
+                        hotkeyTarget = nil
+                    },
+                    onCancel: { hotkeyTarget = nil },
+                    conflictingHotkey: model.settingsStore.settings.dictationHotkey
+                )
+                .preferredColorScheme(.light)
+            }
         }
     }
 
@@ -1045,7 +1051,7 @@ public struct SettingsView: View {
                                 .padding(.vertical, 4)
                                 .background(HeardTheme.Paper.surfaceAlt,
                                             in: RoundedRectangle(cornerRadius: 5))
-                            Button("Set Hotkey") { isRecordingNoteHotkey = true }
+                            Button("Set Hotkey") { hotkeyTarget = .meetingNote }
                                 .controlSize(.small)
                         }
                     }
@@ -1104,7 +1110,7 @@ public struct SettingsView: View {
                                 .padding(.vertical, 4)
                                 .background(HeardTheme.Paper.surfaceAlt,
                                             in: RoundedRectangle(cornerRadius: 5))
-                            Button("Set Hotkey") { isRecordingHotkey = true }
+                            Button("Set Hotkey") { hotkeyTarget = .dictation }
                                 .controlSize(.small)
                                 .disabled(!model.settingsStore.settings.dictationEnabled)
                         }

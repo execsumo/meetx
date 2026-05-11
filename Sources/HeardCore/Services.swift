@@ -1668,6 +1668,8 @@ public final class PipelineProcessor: ObservableObject {
     private var cachedAsrManager: AsrManager?
     private var cachedAsrVersion: TranscriptionModel?
     private var modelUnloadTask: Task<Void, Never>?
+    /// The currently-running pipeline task. Stored so the watchdog can cancel it.
+    private var pipelineTask: Task<Void, Never>?
 
     private static let retryDelays: [TimeInterval] = [5, 30, 300]
     private static let maxRetries = 3
@@ -1759,14 +1761,34 @@ public final class PipelineProcessor: ObservableObject {
             return
         }
         isProcessing = true
-        Task {
+        pipelineTask = Task {
             await processWithRetry(next)
-            await MainActor.run {
+            await MainActor.run { [weak self] in
+                guard let self, self.isProcessing else { return }
+                self.pipelineTask = nil
                 self.isProcessing = false
                 self.clearJobState()
                 self.runNextIfNeeded()
             }
         }
+    }
+
+    /// Called by the watchdog when a pipeline stage has been running too long.
+    /// Cancels the current task (best-effort — FluidAudio may not honour the signal
+    /// immediately) and immediately marks the stuck job as failed so the UI clears.
+    public func abortAndFailCurrentJob() {
+        guard isProcessing else { return }
+        pipelineTask?.cancel()
+        pipelineTask = nil
+        if var job = queueStore.processingJob {
+            job.stage = .failed
+            job.error = "Stage timed out — tap Retry to try again"
+            job.stageStartTime = nil
+            queueStore.update(job)
+        }
+        isProcessing = false
+        clearJobState()
+        onPipelineIdle()
     }
 
     private func clearJobState() {
