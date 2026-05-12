@@ -63,7 +63,6 @@ These are intentional exclusions. Don't add them without a spec update.
 
 - LLM integration (no Claude, OpenAI, or local LLM)
 - Cloud APIs of any kind
-- Non-English transcription / multilingual models
 - Google Meet support (browser-tab; no per-meeting power assertion to detect)
 - Manual app recording (pick any app)
 - System-wide audio capture

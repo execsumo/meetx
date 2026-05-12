@@ -247,9 +247,13 @@ private struct HeroButtonStyle: ButtonStyle {
 
 public struct MenuBarView: View {
     @ObservedObject public var model: AppModel
+    @ObservedObject private var settingsStore: SettingsStore
     @Environment(\.openWindow) private var openWindow
 
-    public init(model: AppModel) { self.model = model }
+    public init(model: AppModel) {
+        self.model = model
+        self.settingsStore = model.settingsStore
+    }
 
     // Height available on screen below the menu bar, minus the pinned footer (~72 px) and
     // a small margin so the panel never sits flush against the Dock or screen edge.
@@ -283,7 +287,7 @@ public struct MenuBarView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     VStack(spacing: 1) {
-                        if model.settingsStore.settings.developerMode {
+                        if settingsStore.settings.developerMode {
                             if model.recordingManager.activeSession == nil {
                                 MenuBarRow(title: "Simulate Meeting", icon: "bolt.circle") {
                                     model.simulateMeeting()
@@ -312,7 +316,7 @@ public struct MenuBarView: View {
                             }
                         }
 
-                        if model.settingsStore.settings.dictationEnabled && !model.isDictating
+                        if settingsStore.settings.dictationEnabled && !model.isDictating
                             && model.recordingManager.activeSession == nil {
                             MenuBarRow(title: "Start Dictation", icon: "mic.badge.plus") {
                                 model.toggleDictation()
@@ -438,7 +442,7 @@ public struct MenuBarView: View {
                     dotColor: model.meetingDetector.isWatching ? HeardTheme.Paper.good : HeardTheme.Paper.warn,
                     pulsing: false,
                     title: model.meetingDetector.isWatching ? "Watching" : "Paused",
-                    subtitle: model.meetingDetector.isWatching ? "Waiting for Teams meeting" : "Click to resume",
+                    subtitle: model.meetingDetector.isWatching ? "Waiting for meeting" : "Click to resume",
                     dark: false,
                     trailing: nil
                 )
