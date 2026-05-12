@@ -1938,7 +1938,7 @@ public struct SpeakerNamingView: View {
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(HeardTheme.Paper.ink)
 
-                Text("Listen to each voice clip and enter their name. Unnamed speakers will be saved with generic labels.")
+                Text("Listen to each voice clip and enter their name. If a candidate's clips are clearly two different voices, choose Multiple speakers to drop it. Unnamed speakers will be saved with generic labels.")
                     .font(.system(size: 12))
                     .foregroundStyle(HeardTheme.Paper.mute)
                     .multilineTextAlignment(.center)
@@ -2031,10 +2031,18 @@ public struct SpeakerNamingView: View {
                 .onSubmit { saveSingle(candidate) }
             }
 
-            Button("Save") { saveSingle(candidate) }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(draftText(for: candidate).isEmpty)
+            VStack(spacing: 4) {
+                Button("Save") { saveSingle(candidate) }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(draftText(for: candidate).isEmpty)
+                Button("Multiple speakers") { discardSingle(candidate) }
+                    .buttonStyle(.plain)
+                    .controlSize(.small)
+                    .font(.system(size: 10))
+                    .foregroundStyle(HeardTheme.Paper.mute)
+                    .help("Drop this candidate without saving. Use when the clips reveal that diarization collapsed two voices into one — keeps the speaker database clean and leaves the transcript labeled Speaker N.")
+            }
         }
         .padding(HeardTheme.Spacing.md)
         .background(HeardTheme.Paper.surface)
@@ -2043,6 +2051,9 @@ public struct SpeakerNamingView: View {
             RoundedRectangle(cornerRadius: HeardTheme.Radius.card)
                 .stroke(HeardTheme.Paper.border, lineWidth: 0.5)
         )
+        .contextMenu {
+            Button("Multiple speakers — discard") { discardSingle(candidate) }
+        }
     }
 
     @ViewBuilder
@@ -2149,6 +2160,12 @@ public struct SpeakerNamingView: View {
         let name = draftText(for: candidate)
         guard !name.isEmpty else { return }
         model.saveSpeakerName(candidate: candidate, name: name)
+        drafts.removeValue(forKey: candidate.id)
+    }
+
+    private func discardSingle(_ candidate: NamingCandidate) {
+        stopAudio()
+        model.discardCandidate(candidate)
         drafts.removeValue(forKey: candidate.id)
     }
 

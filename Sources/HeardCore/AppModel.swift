@@ -653,6 +653,24 @@ public var filteredSpeakers: [SpeakerProfile] {
         }
     }
 
+    /// Drop a candidate without creating a SpeakerProfile. Used when the user
+    /// listens to the clips and realizes diarization collapsed two voices into
+    /// one cluster — saving would poison the speaker database with a merged
+    /// embedding. The transcript keeps the placeholder ("Speaker N"). The
+    /// temporary clip files are deleted since they aren't going anywhere.
+    public func discardCandidate(_ candidate: NamingCandidate) {
+        for url in candidate.audioClipURLs {
+            try? FileManager.default.removeItem(at: url)
+        }
+        namingCandidates.removeAll { $0.id == candidate.id }
+        if namingCandidates.isEmpty {
+            namingDismissTask?.cancel()
+            namingDismissTask = nil
+            showNamingPrompt = false
+            phase = queueStore.processingJob == nil ? .dormant : .processing
+        }
+    }
+
     public func skipNaming() {
         // Store remaining unnamed candidates with generic names (preserving embeddings + clips).
         for candidate in namingCandidates {
