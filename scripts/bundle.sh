@@ -85,12 +85,16 @@ fi
 # Code sign
 if [[ -n "$SIGN_IDENTITY" ]]; then
     echo "==> Signing with identity: $SIGN_IDENTITY"
-    # NOTE: --options runtime (Hardened Runtime) is intentionally omitted for self-signed
-    # certificates. When Hardened Runtime is enabled with a non-Apple-Developer cert, macOS
-    # performs a stricter CT/chain validation that fails for self-signed certs, causing TCC
-    # (Accessibility, Screen Recording) to not persist across app restarts. Without the flag
-    # the entitlements are still embedded and TCC correctly tracks the cert identity.
+    # Developer ID Application certs (issued by Apple) require --options runtime (Hardened
+    # Runtime) and --timestamp for notarization. Self-signed / local certs must NOT use
+    # --options runtime: macOS performs stricter CT/chain validation that fails for non-Apple
+    # certs, causing TCC (Accessibility, Screen Recording) to not persist across restarts.
+    CODESIGN_EXTRA_FLAGS=""
+    if [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]]; then
+        CODESIGN_EXTRA_FLAGS="--options runtime --timestamp"
+    fi
     codesign --force \
+        $CODESIGN_EXTRA_FLAGS \
         --entitlements "$REPO_ROOT/Heard.entitlements" \
         --sign "$SIGN_IDENTITY" \
         "$APP_BUNDLE"

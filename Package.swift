@@ -28,7 +28,10 @@ let package = Package(
         .executableTarget(
             name: "HeardTests",
             dependencies: ["HeardCore"],
-            path: "Tests/HeardTests"
+            path: "Tests/HeardTests",
+            resources: [
+                .copy("Fixtures")
+            ]
         )
     ]
 )

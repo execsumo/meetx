@@ -1,0 +1,20 @@
+cask "heard" do
+  version "0.1.0"
+  # Run scripts/dmg.sh to build the release DMG, then fill in the SHA256 it prints.
+  sha256 "PLACEHOLDER_RUN_DMG_SH_TO_GET_SHA256"
+
+  url "https://github.com/execsumo/heard/releases/download/v#{version}/Heard-#{version}.dmg"
+  name "Heard"
+  desc "Menu bar app that auto-records and transcribes Microsoft Teams meetings on-device"
+  homepage "https://github.com/execsumo/heard"
+
+  # macOS 15 Sequoia or later required (uses CATapDescription process tap)
+  depends_on macos: ">= :sequoia"
+
+  app "Heard.app"
+
+  zap trash: [
+    "~/Library/Application Support/Heard",
+    "~/Library/Preferences/com.execsumo.heard.plist",
+  ]
+end
