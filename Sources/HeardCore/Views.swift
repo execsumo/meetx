@@ -1409,6 +1409,54 @@ public struct SettingsView: View {
                 }
             }
 
+            sectionGroup("Diarization") {
+                SettingsCard {
+                    CardRow(isLast: false) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Speaker separation")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(HeardTheme.Paper.ink)
+                                Spacer()
+                                Text(String(format: "%.2f", model.settingsStore.settings.diarizationClusteringThreshold))
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                            }
+                            HStack(spacing: 8) {
+                                Text("More speakers")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                                Slider(
+                                    value: settingsBinding(\.diarizationClusteringThreshold),
+                                    in: 0.30...0.80,
+                                    step: 0.05
+                                )
+                                Text("Fewer speakers")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                            }
+                        }
+                    }
+                    CardRow(isLast: false) {
+                        Text("Cosine-distance threshold for clustering voice embeddings. Lower values err on the side of splitting one person across two profiles (which you can merge in the Speakers tab); higher values may collapse two voices into one (harder to recover from). Default: 0.50.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(HeardTheme.Paper.mute)
+                    }
+                    CardRow(isLast: true) {
+                        HStack {
+                            Spacer()
+                            Button("Reset to Default") {
+                                model.settingsStore.settings.diarizationClusteringThreshold =
+                                    AppSettings.default.diarizationClusteringThreshold
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(HeardTheme.Paper.accent)
+                        }
+                    }
+                }
+            }
+
             sectionGroup("Debugging") {
                 SettingsCard {
                     ToggleRow(

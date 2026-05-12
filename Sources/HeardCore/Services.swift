@@ -2263,7 +2263,13 @@ public final class PipelineProcessor: ObservableObject {
             return
         }
 
-        let diarizer = OfflineDiarizerManager()
+        // Configure clustering threshold so the user can bias toward more
+        // separations (lower) vs fewer (higher). The Speakers tab supports
+        // merging, but recovering from a merged embedding is harder, so we
+        // default to stricter than FluidAudio's 0.6.
+        let threshold = settingsStore.settings.diarizationClusteringThreshold
+        let config = OfflineDiarizerConfig(clusteringThreshold: threshold)
+        let diarizer = OfflineDiarizerManager(config: config)
         try await diarizer.prepareModels()
         appDiarization = try await diarizer.process(audio: track.samples)
 
