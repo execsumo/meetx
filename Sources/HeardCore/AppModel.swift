@@ -225,6 +225,10 @@ public final class AppModel: ObservableObject {
             }
         )
 
+        meetingDetector.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
         stageWatchdogTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.checkForStuckPipelineStage()
         }

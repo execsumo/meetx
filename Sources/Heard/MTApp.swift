@@ -4,7 +4,16 @@ import SwiftUI
 
 private struct MenuBarIcon: View {
     @ObservedObject var model: AppModel
+    // MenuBarExtra(.window) doesn't reliably forward child-store
+    // objectWillChange events to the label, so observe MeetingDetector
+    // directly. Without this, toggling watching off doesn't dim the icon.
+    @ObservedObject private var meetingDetector: MeetingDetector
     @Environment(\.openWindow) private var openWindow
+
+    init(model: AppModel) {
+        self.model = model
+        self.meetingDetector = model.meetingDetector
+    }
 
     private static let templateImage: NSImage = {
         guard let url = Bundle.main.url(forResource: "MenuBarIconTemplate", withExtension: "svg"),
@@ -41,7 +50,7 @@ private struct MenuBarIcon: View {
     private var iconOpacity: Double {
         let paused = model.phase == .dormant
             && !model.isDictating
-            && !model.meetingDetector.isWatching
+            && !meetingDetector.isWatching
         return paused ? 0.5 : 1.0
     }
 
