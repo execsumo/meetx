@@ -9,7 +9,6 @@ public final class AppModel: ObservableObject {
     @Published public var namingCandidates: [NamingCandidate] = []
     /// Set to true when naming prompt should be shown. Observed by the naming window scene.
     @Published public var showNamingPrompt = false
-    private var namingDismissTask: Task<Void, Never>?
     @Published public var selectedSettingsTab: SettingsTab = .general
     @Published public var speakerFilter = ""
     @Published public var vocabularyDraft = ""
@@ -154,7 +153,6 @@ public final class AppModel: ObservableObject {
                 self?.namingCandidates = candidates
                 self?.phase = .userAction
                 self?.showNamingPrompt = true
-                self?.startNamingAutoDismiss()
             },
             onPipelineIdle: { [weak self] in
                 guard let self else { return }
@@ -642,8 +640,6 @@ public var filteredSpeakers: [SpeakerProfile] {
         }
         namingCandidates.removeAll { $0.id == candidate.id }
         if namingCandidates.isEmpty {
-            namingDismissTask?.cancel()
-            namingDismissTask = nil
             showNamingPrompt = false
             phase = queueStore.processingJob == nil ? .dormant : .processing
         }
@@ -666,8 +662,6 @@ public var filteredSpeakers: [SpeakerProfile] {
             )
         }
         namingCandidates.removeAll()
-        namingDismissTask?.cancel()
-        namingDismissTask = nil
         showNamingPrompt = false
         phase = queueStore.activeJob == nil ? .dormant : .processing
     }
@@ -737,20 +731,4 @@ public var filteredSpeakers: [SpeakerProfile] {
 
 
 
-    // MARK: - Speaker Naming Auto-Dismiss
-
-    private func startNamingAutoDismiss() {
-        namingDismissTask?.cancel()
-        namingDismissTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(120))
-            guard let self, !Task.isCancelled else { return }
-            guard !self.namingCandidates.isEmpty else { return }
-            self.skipNaming()
-        }
-    }
-
-    /// Resets the auto-dismiss timer. Call whenever the user shows activity in the naming window.
-    public func resetNamingAutoDismiss() {
-        startNamingAutoDismiss()
-    }
 }

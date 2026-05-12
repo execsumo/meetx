@@ -183,7 +183,6 @@ See [`ROADMAP.md`](./ROADMAP.md) for the full list of planned improvements, orga
 
 ### 2. Known rough edges
 - Menu bar dropdown uses `.window` style and has a fixed max height — jobs list can clip when many jobs accumulate
-- No collision detection between the two Heard hotkeys (dictation and meeting notes) — each runs through the per-hotkey system-shortcuts validator but neither warns about clashing with the other
 - Dictation does not auto-resume after a meeting ends (auto-pauses on meeting start; user must restart manually)
 - Teams detection only matches localized app names — non-English macOS locales may miss Teams
 
