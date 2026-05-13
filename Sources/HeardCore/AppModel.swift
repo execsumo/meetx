@@ -269,6 +269,15 @@ public var filteredSpeakers: [SpeakerProfile] {
         meetingDetector.isWatching ? stopWatching() : startWatching()
     }
 
+    public func setAutoWatch(_ enabled: Bool) {
+        settingsStore.settings.autoWatch = enabled
+        if enabled {
+            if !meetingDetector.isWatching { startWatching() }
+        } else {
+            if meetingDetector.isWatching { stopWatching() }
+        }
+    }
+
     // MARK: - Dictation
 
     public func toggleDictation() {

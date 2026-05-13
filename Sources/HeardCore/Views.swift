@@ -294,77 +294,81 @@ public struct MenuBarView: View {
 
             HeardTheme.Paper.borderSoft.frame(height: 0.5)
 
-            // Scrollable middle — actions then jobs; actions anchor to top so they
-            // stay reachable even when the jobs list is long.
-            ScrollView {
-                VStack(spacing: 0) {
-                    VStack(spacing: 1) {
-                        if settingsStore.settings.developerMode {
-                            if recordingManager.activeSession == nil {
-                                MenuBarRow(title: "Simulate Meeting", icon: "bolt.circle") {
-                                    model.simulateMeeting()
-                                }
-                            } else {
-                                MenuBarRow(title: "End Simulation", icon: "stop.circle") {
-                                    model.endSimulatedMeeting()
-                                }
-                            }
+            // Action rows — rendered directly (no ScrollView) so they always
+            // size to their natural content height. Wrapping them in a
+            // ScrollView inside MenuBarExtra(.window) caused the whole middle
+            // section to collapse to zero height in some layout passes.
+            VStack(spacing: 1) {
+                if settingsStore.settings.developerMode {
+                    if recordingManager.activeSession == nil {
+                        MenuBarRow(title: "Simulate Meeting", icon: "bolt.circle") {
+                            model.simulateMeeting()
                         }
-
-                        if !model.namingCandidates.isEmpty {
-                            MenuBarRow(title: "Name Speakers…", icon: "person.badge.plus", accent: true) {
-                                openWindow(id: "speaker-naming")
-                                NSApp.activate(ignoringOtherApps: true)
-                            }
+                    } else {
+                        MenuBarRow(title: "End Simulation", icon: "stop.circle") {
+                            model.endSimulatedMeeting()
                         }
+                    }
+                }
 
-                        if recordingManager.activeSession == nil && !meetingDetector.isWatching {
-                            MenuBarRow(title: "Start Recording", icon: "record.circle") {
-                                model.startManualRecording()
-                            }
-                        } else if recordingManager.activeSession != nil && !meetingDetector.isWatching {
-                            MenuBarRow(title: "Stop Recording", icon: "stop.circle") {
-                                model.stopManualRecording()
-                            }
-                        }
+                if !model.namingCandidates.isEmpty {
+                    MenuBarRow(title: "Name Speakers…", icon: "person.badge.plus", accent: true) {
+                        openWindow(id: "speaker-naming")
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
+                }
 
-                        if settingsStore.settings.dictationEnabled && !model.isDictating
-                            && recordingManager.activeSession == nil {
-                            MenuBarRow(title: "Start Dictation", icon: "mic.badge.plus") {
-                                model.toggleDictation()
-                            }
-                        }
+                if recordingManager.activeSession == nil && !meetingDetector.isWatching {
+                    MenuBarRow(title: "Start Recording", icon: "record.circle") {
+                        model.startManualRecording()
+                    }
+                } else if recordingManager.activeSession != nil && !meetingDetector.isWatching {
+                    MenuBarRow(title: "Stop Recording", icon: "stop.circle") {
+                        model.stopManualRecording()
+                    }
+                }
 
-                        MenuBarRow(title: "Open Transcripts", icon: "folder") {
-                            model.openOutputDirectory()
+                if settingsStore.settings.dictationEnabled && !model.isDictating
+                    && recordingManager.activeSession == nil {
+                    MenuBarRow(title: "Start Dictation", icon: "mic.badge.plus") {
+                        model.toggleDictation()
+                    }
+                }
+
+                MenuBarRow(title: "Open Transcripts", icon: "folder") {
+                    model.openOutputDirectory()
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+
+            // Recent Transcripts — scrollable only if the list can outgrow the
+            // available space. Capped so the panel never extends past the
+            // screen edge regardless of how many jobs are present.
+            if !queueStore.recentTranscripts.isEmpty {
+                HeardTheme.Paper.borderSoft.frame(height: 0.5)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Recent Transcripts")
+                            .font(.system(size: 10, weight: .bold))
+                            .kerning(0.5)
+                            .foregroundStyle(HeardTheme.Paper.mute)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 4)
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            ForEach(queueStore.recentTranscripts) { job in
+                                JobRow(job: job, model: model)
+                            }
                         }
                     }
                     .padding(.horizontal, 6)
-                    .padding(.vertical, 4)
-
-                    if !queueStore.recentTranscripts.isEmpty {
-                        HeardTheme.Paper.borderSoft.frame(height: 0.5)
-
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("Recent Transcripts")
-                                .font(.system(size: 10, weight: .bold))
-                                .kerning(0.5)
-                                .foregroundStyle(HeardTheme.Paper.mute)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 4)
-
-                            VStack(alignment: .leading, spacing: 1) {
-                                ForEach(queueStore.recentTranscripts) { job in
-                                    JobRow(job: job, model: model)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.bottom, 4)
-                    }
+                    .padding(.bottom, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(maxHeight: scrollableMaxHeight)
             }
-            .frame(maxHeight: scrollableMaxHeight)
 
             // Pinned bottom — always reachable
             HeardTheme.Paper.borderSoft.frame(height: 0.5)
@@ -919,7 +923,13 @@ public struct SettingsView: View {
                             set: { model.setLaunchAtLogin($0) }
                         )
                     )
-                    ToggleRow(title: "Auto-Detect & Record Meetings", isOn: settingsBinding(\.autoWatch))
+                    ToggleRow(
+                        title: "Auto-Detect & Record Meetings",
+                        isOn: Binding(
+                            get: { model.settingsStore.settings.autoWatch },
+                            set: { model.setAutoWatch($0) }
+                        )
+                    )
                     ToggleRow(
                         title: "Show Dock Icon",
                         isLast: true,
