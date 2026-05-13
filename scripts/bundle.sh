@@ -12,8 +12,8 @@ set -euo pipefail
 #                      fresh build, and relaunch it. Installing to a stable path keeps TCC
 #                      grants attached to a single bundle across rebuilds.
 #   --reset            Reset Microphone, Screen Recording, Accessibility, and AudioCapture
-#                      grants for com.execsumo.heard before launch. Implies --install.
-#   --reset-window-size  Clear saved window frame sizes so windows reopen at their defaultSize.
+#                      grants and saved window sizes for com.execsumo.heard before launch.
+#                      Implies --install.
 
 BUNDLE_ID="com.execsumo.heard"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,7 +22,7 @@ SIGN_IDENTITY=""
 OUTPUT_DIR="$REPO_ROOT/build"
 INSTALL=0
 RESET_TCC=0
-RESET_WINDOW_SIZE=0
+RESET_WINDOW_SIZE=0  # set by --reset
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -30,8 +30,7 @@ while [[ $# -gt 0 ]]; do
         --sign)              SIGN_IDENTITY="$2"; shift 2 ;;
         --output)            OUTPUT_DIR="$2"; shift 2 ;;
         --install)           INSTALL=1; shift ;;
-        --reset)             RESET_TCC=1; INSTALL=1; shift ;;
-        --reset-window-size) RESET_WINDOW_SIZE=1; shift ;;
+        --reset)             RESET_TCC=1; RESET_WINDOW_SIZE=1; INSTALL=1; shift ;;
         *)                   echo "Unknown option: $1"; exit 1 ;;
     esac
 done
