@@ -962,7 +962,7 @@ public struct SettingsView: View {
                         )
                     )
                     ToggleRow(
-                        title: "Auto-Detect & Record Meetings",
+                        title: "Auto-Watch & Record Meetings",
                         isOn: Binding(
                             get: { model.settingsStore.settings.autoWatch },
                             set: { model.setAutoWatch($0) }

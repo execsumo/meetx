@@ -266,7 +266,7 @@ public var filteredSpeakers: [SpeakerProfile] {
     }
 
     public func toggleWatching() {
-        meetingDetector.isWatching ? stopWatching() : startWatching()
+        setAutoWatch(!meetingDetector.isWatching)
     }
 
     public func setAutoWatch(_ enabled: Bool) {
