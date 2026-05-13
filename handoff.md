@@ -4,6 +4,8 @@
 
 The app builds cleanly with `swift build` and runs as a menu bar app on macOS 15.0+. Core infrastructure is complete — meeting detection, dual-track audio capture, on-device transcription (Parakeet TDT V2), VAD (Silero), speaker diarization (LS-EEND + WeSpeaker), and speaker assignment are all functional via the FluidAudio framework. An `.app` bundle is available via `./scripts/bundle.sh`.
 
+**v0.1.0 is released** — notarized DMG published to [GitHub Releases](https://github.com/execsumo/Heard/releases/tag/v0.1.0) and installable via `brew tap execsumo/heard && brew install --cask heard`.
+
 **Dictation feature is fully functional** — speech recognition, text injection via CGEvent unicode insertion, and global hotkey (Ctrl+Shift+D) all working. Requires building with a stable code signing identity (`./scripts/bundle.sh --sign "Heard Dev"`) so Accessibility permission persists across rebuilds.
 
 **In-meeting notes are fully functional** — global hotkey (Ctrl+Shift+N by default) opens a focused composer panel during recording; notes interleave chronologically into the rendered transcript as italicized `**Note from <userName>:**` lines. See "In-Meeting Notes" below.
@@ -35,7 +37,7 @@ The app builds cleanly with `swift build` and runs as a menu bar app on macOS 15
 - Sequential job queue with stages: queued → preprocessing → transcribing → diarizing → assigning → complete
 - **Preprocessing**: Resample to 16kHz mono via `AudioConverter`, Silero VAD silence trimming, `VadSegmentMap` for timestamp remapping
 - **Transcription**: Parakeet TDT V2/V3 (user-selectable) via `AsrManager` with 16k sample minimum guard. Each transcribe call uses a fresh `TdtDecoderState`, so no context bleeds between tracks or jobs. Always passes `language: .english` — required by FluidAudio 0.14.x to keep v3 from emitting Cyrillic for short Latin-script utterances; ignored by v2.
-- **Diarization**: `OfflineDiarizerManager` on app track only (mic track is a single known speaker, diarization was unused)
+- **Diarization**: `OfflineDiarizerManager` on app track only (mic track is a single known speaker, diarization was unused). Clustering threshold is user-configurable via `AppSettings.diarizationClusteringThreshold` (default 0.50, range 0.30–0.80 in 0.05 steps; FluidAudio's library default is 0.60). Lower = stricter separation, more clusters. The 0.50 default biases toward over-splitting because merging in the Speakers tab is easier than recovering a polluted embedding.
 - **Speaker Assignment**: Cosine distance matching against `SpeakerStore`, confidence margin filtering, embedding diversity management
 - Non-retryable errors (no audio, too short) fail immediately; transient errors retry 3x per session with backoff (5s, 30s, 5min) via `PipelineProcessor.executeWithRetry` (closure-driven, testable)
 - `retryCount` is cumulative across sessions with a lifetime cap of 6 (`PipelineProcessor.lifetimeRetryLimit`). User-initiated retry (`retryFailedJob`) resets `retryCount = 0` for a fresh budget.
@@ -88,7 +90,8 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 - **Card-based settings layout** — `SettingsCard`/`CardRow`/`ToggleRow` primitives replace `Form`/`.formStyle(.grouped)`. `HeardToggleStyle` (30×18 px pill, accent on / muteSoft off). `StatusDot` with 13 px glow-ring pulse animation.
 - Menu bar dropdown (268 px wide) with status card (dark `#2E3338` bg while recording/dictating, Paper bg otherwise), recording timer, and quick actions
 - Menu bar icons are SF Symbols with symbol effects (`recordingtape`, `record.circle` + `.breathe`, `waveform` + `.variableColor`, `exclamationmark.circle.fill`, `person.crop.circle.badge.exclamationmark`)
-- Settings window (880×600, opened via `@Environment(\.openWindow)`) with 5 tabs: **General** (launch at login, auto-watch, developer mode, custom vocabulary, output folder, permissions, meeting notes hotkey), **Dictation** (enable, push-to-talk, hotkey recorder, model keep-alive, custom formatting commands, live status), **Models** (download status, pipeline keep-alive, force-unload), **Speakers** (your name, inline rename, merge, delete, search/sort), **About**
+- **Menu bar reactivity fix**: `MenuBarView` holds direct `@ObservedObject` subscriptions to `queueStore`, `recordingManager`, `pipelineProcessor`, and `meetingDetector` — required because `MenuBarExtra(.window)` does not reliably re-render from forwarded child-store `objectWillChange` events. `MeetingDetector` is now an `ObservableObject` with `@Published isWatching`; `MenuBarIcon` subscribes directly so the paused/dimmed state reflects toggles immediately. `PipelineProcessor.runNextIfNeeded` also recovers orphaned non-terminal jobs (left in mid-stage when the processor is idle) by re-queuing them, charging a retry against the lifetime cap.
+- Settings window (880×600, opened via `@Environment(\.openWindow)`) with 6 tabs: **General** (launch at login, auto-watch, developer mode, custom vocabulary, output folder, permissions, meeting notes hotkey), **Transcription** (model download status, pipeline keep-alive, force-unload), **Dictation** (enable, push-to-talk, hotkey recorder, model keep-alive, custom formatting commands, live status), **Speakers** (your name, inline rename, merge, delete, search/sort), **Advanced** (diarization clustering threshold slider with "More speakers" ↔ "Fewer speakers" labels, live numeric readout, reset-to-default), **About**
 - Standalone "Name Speakers" window scene (id `speaker-naming`, 560×520) with per-candidate audio playback, roster suggestions, and 120 s auto-dismiss
 - Keyboard input works in Settings — `WindowActivationCoordinator` reference-counts `.accessory`/`.regular` transitions across the Settings and Name Speakers windows so closing one while the other is still open never steals keyboard focus
 - Output folder picker via `NSOpenPanel`
@@ -114,6 +117,7 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 - Suggested names from Teams roster when available (shown as orange hint text)
 - Text fields pre-populated with roster suggestions for quick confirmation
 - **"Save & Close"** commits all entered names and dismisses the window via `dismissWindow(id: "speaker-naming")`; **"Skip All"** saves remaining unnamed speakers with `Speaker N` labels and dismisses
+- **"Multiple speakers" discard**: a per-row button (and context-menu entry) drops the candidate without creating a `SpeakerProfile`, keeping the speaker database clean when diarization merged two voices into one cluster. Temporary audio clips are deleted immediately. The transcript retains the UUID placeholder label; the user can rename it manually in the Markdown file.
 - 120-second auto-dismiss countdown — saves unnamed speakers with "Speaker N" labels
 - Speaker profiles created with voice embeddings from diarization, enabling future recognition
 - **No duplicate "Speaker N" profiles**: `SpeakerMatcher.updateDatabase` only refreshes already-matched profiles. Roster-auto-assigned new speakers get a profile with the resolved name in `runSpeakerAssignment`. Unresolved new speakers are persisted exactly once — by `saveSpeakerName` (real name) or `skipNaming`/auto-dismiss (`Speaker N`).
@@ -129,8 +133,10 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 - `Info.plist` with `LSUIElement` (menu bar app), `NSMicrophoneUsageDescription`, bundle ID `com.execsumo.heard`, `CFBundleIconFile = AppIcon`
 - `Heard.entitlements` with audio-input only (no sandbox per spec)
 - `Resources/AppIcon.iconset/` ships 16/32/128/256/512 PNG pairs; `bundle.sh` runs `iconutil -c icns` to compile `AppIcon.icns` into the bundle. Settings → About displays the real bundle icon via `NSApp.applicationIconImage`
-- `scripts/bundle.sh` builds via SPM, creates `.app` bundle, auto-signs with `Dev Cert` if available else ad-hoc
+- `scripts/bundle.sh` builds via SPM, creates `.app` bundle, auto-signs with `Dev Cert` if available else ad-hoc. When `--sign` is a `Developer ID Application:` cert, automatically adds `--options runtime --timestamp` (required for notarization); self-signed local certs are left unchanged.
 - Flags: `--release`, `--sign IDENTITY`, `--output DIR`, `--install` (quit running app, replace `/Applications/Heard.app`, relaunch — anchors TCC grants to a stable path), `--reset` (also `tccutil reset` Microphone/ScreenCapture/Accessibility before install — implies `--install`)
+- `scripts/dmg.sh` — distribution pipeline: release build → zip → notarize `.app` via `xcrun notarytool` → staple → create DMG with `/Applications` symlink → sign DMG → notarize DMG → staple DMG → print SHA256. Uses `--keychain-profile heard-notary` (stored via `notarytool store-credentials`). Pass `--skip-notarize` for local testing.
+- **v0.1.0 released**: `dist/Heard-0.1.0.dmg` (notarized, stapled). GitHub Release at `github.com/execsumo/Heard/releases/tag/v0.1.0`. Homebrew tap at `github.com/execsumo/homebrew-heard` (`brew tap execsumo/heard && brew install --cask heard`).
 
 ### Testing
 - `HeardTests` executable target with 100 tests across: VadSegmentMap, cosine distance, SpeakerMatcher (incl. threshold/margin edge cases), SegmentMerger, AudioPreprocessor, TranscriptWriter, SpeakerStore, PipelineQueueStore, pipeline resume/recovery (`prepareForResume`), meeting detection state machine (`MeetingDetectionState`), retry executor (`PipelineProcessor.executeWithRetry`) incl. lifetime cap, Teams identification, MeetingDetector lifecycle, and RosterReader (window-title parser + filter)
@@ -170,16 +176,18 @@ The dictation feature captures mic audio, transcribes in real-time, and injects 
 | `Sources/HeardCore/MeetingNoteComposer.swift` | Floating `NSPanel` composer for in-meeting notes |
 | `Info.plist` | App bundle metadata |
 | `Heard.entitlements` | Audio input entitlement |
-| `scripts/bundle.sh` | Build + bundle script |
+| `scripts/bundle.sh` | Build + bundle script (auto-enables hardened runtime for Developer ID certs) |
+| `scripts/dmg.sh` | Release DMG pipeline: build, sign, notarize, staple, package |
 
 ## Next Steps
 
 See [`ROADMAP.md`](./ROADMAP.md) for the full list of planned improvements, organized by near-term polish, mid-term features, long-term bets, and technical debt. The highlights:
 
-### 1. Distribution
-- CI pipeline — GitHub Actions: build, test, bundle, notarize, publish
-- DMG packaging for GitHub Releases
-- Homebrew Cask formula
+### 1. Distribution (done for v0.1.0)
+- ✅ DMG packaging — `scripts/dmg.sh` (build, sign, notarize, staple, package)
+- ✅ GitHub Release — `github.com/execsumo/Heard/releases/tag/v0.1.0`
+- ✅ Homebrew Cask — `brew tap execsumo/heard && brew install --cask heard`
+- CI pipeline — `.github/workflows/ci.yml` exists (build + test); notarize/publish step not yet wired to releases
 
 ### 2. Known rough edges
 - Menu bar dropdown uses `.window` style and has a fixed max height — jobs list can clip when many jobs accumulate

@@ -7,8 +7,9 @@ A living list of planned improvements and stretch ideas. Ordered by how close ea
 These land inside the existing v1 scope and mostly tighten things the user already sees.
 
 ### Distribution & install
-- **DMG packaging.** Add a `scripts/dmg.sh` that builds, signs, notarizes, and stamps out a DMG for GitHub Releases.
-- **Homebrew Cask.** Draft a Cask formula so the app is installable via `brew install --cask heard` once the DMG pipeline is live.
+- ~~**DMG packaging.**~~ Done — `scripts/dmg.sh` builds, signs, notarizes, and packages. v0.1.0 DMG published to GitHub Releases.
+- ~~**Homebrew Cask.**~~ Done — `brew tap execsumo/heard && brew install --cask heard` ([tap repo](https://github.com/execsumo/homebrew-heard)).
+- **CI publish step.** `.github/workflows/ci.yml` runs build + tests. Wire it to call `dmg.sh` and upload to GitHub Releases on tag push.
 - **Sparkle (or equivalent) update checker.** Explicitly out of scope per `spec.md`, but worth reconsidering once CI publishes releases.
 
 
