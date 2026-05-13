@@ -99,7 +99,7 @@ struct HeardApp: App {
                 .onAppear { WindowActivationCoordinator.begin("settings") }
                 .onDisappear { WindowActivationCoordinator.end("settings") }
         }
-        .defaultSize(width: 880, height: 600)
+        .defaultSize(width: 680, height: 500)
         .windowResizability(.contentSize)
 
         Window("Name Speakers", id: "speaker-naming") {

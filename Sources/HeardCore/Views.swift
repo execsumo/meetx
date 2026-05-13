@@ -773,7 +773,7 @@ public struct SettingsView: View {
             sidebar
             detailPane
         }
-        .frame(minWidth: 880, minHeight: 600)
+        .frame(minWidth: 580, minHeight: 440)
         .preferredColorScheme(.light)
         .sheet(item: $hotkeyTarget) { target in
             switch target {
