@@ -41,6 +41,7 @@ public final class AppModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var stageWatchdogTimer: Timer?
+    private var namingDismissTask: Task<Void, Never>?
     // 90 minutes is generous for any realistic workload (4-hour meeting transcription
     // on slow hardware). A genuine FluidAudio hang shows up well within this window.
     private static let maxStageSeconds: TimeInterval = 90 * 60
@@ -228,7 +229,9 @@ public final class AppModel: ObservableObject {
             .store(in: &cancellables)
 
         stageWatchdogTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            self?.checkForStuckPipelineStage()
+            Task { @MainActor [weak self] in
+                self?.checkForStuckPipelineStage()
+            }
         }
     }
 
