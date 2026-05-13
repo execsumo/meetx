@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Heard}",
+            "name": "Debug Heard",
+            "target": "Heard",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Heard"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Heard}",
+            "name": "Release Heard",
+            "target": "Heard",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Heard"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Heard}",
+            "name": "Debug HeardTests",
+            "target": "HeardTests",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug HeardTests"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Heard}",
+            "name": "Release HeardTests",
+            "target": "HeardTests",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release HeardTests"
+        }
+    ]
+}
