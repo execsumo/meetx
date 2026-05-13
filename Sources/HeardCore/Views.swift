@@ -14,33 +14,54 @@ private extension Color {
             blue:  Double( n        & 0xFF) / 255
         )
     }
+    init(light: String, dark: String) {
+        self.init(nsColor: NSColor(name: nil, dynamicProvider: { appearance in
+            if appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
+                return NSColor(Color(hex: dark))
+            } else {
+                return NSColor(Color(hex: light))
+            }
+        }))
+    }
+}
+
+// MARK: - AppAppearance Extension
+
+public extension AppAppearance {
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
 }
 
 // MARK: - Theme
 
 enum HeardTheme {
     enum Paper {
-        static let bg           = Color(hex: "F5EFE4")
-        static let surface      = Color(hex: "FBF7EF")
-        static let surfaceAlt   = Color(hex: "EFE7D7")
-        static let sidebar      = Color(hex: "EBE2CE")
-        static let border       = Color(hex: "D9CFB9")
-        static let borderSoft   = Color(hex: "E5DCC8")
-        static let ink          = Color(hex: "1C2024")
-        static let ink2         = Color(hex: "3A3F47")
-        static let mute         = Color(hex: "7B7264")
-        static let muteSoft     = Color(hex: "C9BBA5")
-        static let accent       = Color(hex: "3F5C8C")
-        static let accentInk    = Color(hex: "2F4570")
-        static let accentSoft   = Color(hex: "E5EAF3")
-        static let good         = Color(hex: "3D7A4F")
-        static let goodSoft     = Color(hex: "E1EEDF")
-        static let warn         = Color(hex: "A66A1F")
-        static let warnSoft     = Color(hex: "F4E6CE")
-        static let bad          = Color(hex: "A6452B")
-        static let badSoft      = Color(hex: "F2DCD2")
-        static let recordingBg  = Color(hex: "2E3338")
-        static let recordingInk = Color(hex: "F5EFE4")
+        static let bg           = Color(light: "F5EFE4", dark: "1C2024")
+        static let surface      = Color(light: "FBF7EF", dark: "252A30")
+        static let surfaceAlt   = Color(light: "EFE7D7", dark: "2E3338")
+        static let sidebar      = Color(light: "EBE2CE", dark: "22272D")
+        static let border       = Color(light: "D9CFB9", dark: "4A515A")
+        static let borderSoft   = Color(light: "E5DCC8", dark: "3A3F47")
+        static let ink          = Color(light: "1C2024", dark: "F5EFE4")
+        static let ink2         = Color(light: "3A3F47", dark: "D9CFB9")
+        static let mute         = Color(light: "7B7264", dark: "9A9184")
+        static let muteSoft     = Color(light: "C9BBA5", dark: "4A515A")
+        static let accent       = Color(light: "3F5C8C", dark: "658BC9")
+        static let accentInk    = Color(light: "2F4570", dark: "8BB2F2")
+        static let accentSoft   = Color(light: "E5EAF3", dark: "26334A")
+        static let good         = Color(light: "3D7A4F", dark: "53A66B")
+        static let goodSoft     = Color(light: "E1EEDF", dark: "243D2D")
+        static let warn         = Color(light: "A66A1F", dark: "D98A29")
+        static let warnSoft     = Color(light: "F4E6CE", dark: "4D351A")
+        static let bad          = Color(light: "A6452B", dark: "D65738")
+        static let badSoft      = Color(light: "F2DCD2", dark: "4A251C")
+        static let recordingBg  = Color(light: "2E3338", dark: "A6452B")
+        static let recordingInk = Color(light: "F5EFE4", dark: "1C2024")
     }
 
     static var accent: Color { Paper.accent }
@@ -387,7 +408,6 @@ public struct MenuBarView: View {
         }
         .frame(width: 268)
         .background(HeardTheme.Paper.bg)
-        .preferredColorScheme(.light)
         .onChange(of: model.showNamingPrompt) { _, show in
             NSLog("Heard: MenuBarView observed showNamingPrompt=\(show)")
             if show {
@@ -778,7 +798,6 @@ public struct SettingsView: View {
             detailPane
         }
         .frame(minWidth: 580, minHeight: 440)
-        .preferredColorScheme(.light)
         .sheet(item: $hotkeyTarget) { target in
             switch target {
             case .dictation:
@@ -790,7 +809,6 @@ public struct SettingsView: View {
                     onCancel: { hotkeyTarget = nil },
                     conflictingHotkey: model.settingsStore.settings.meetingNoteHotkey
                 )
-                .preferredColorScheme(.light)
             case .meetingNote:
                 HotkeyRecorderView(
                     onCommit: { combo in
@@ -800,7 +818,6 @@ public struct SettingsView: View {
                     onCancel: { hotkeyTarget = nil },
                     conflictingHotkey: model.settingsStore.settings.dictationHotkey
                 )
-                .preferredColorScheme(.light)
             }
         }
     }
@@ -909,6 +926,27 @@ public struct SettingsView: View {
                             TextField("Used as speaker label in transcripts", text: settingsBinding(\.userName))
                                 .textFieldStyle(.roundedBorder)
                                 .frame(maxWidth: 220)
+                        }
+                    }
+                }
+            }
+
+            sectionGroup("Appearance") {
+                SettingsCard {
+                    CardRow(isLast: true) {
+                        HStack {
+                            Text("Theme")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(HeardTheme.Paper.ink)
+                            Spacer()
+                            Picker("", selection: settingsBinding(\.appearance)) {
+                                ForEach(AppAppearance.allCases) { appearance in
+                                    Text(appearance.displayName).tag(appearance)
+                                }
+                            }
+                            .labelsHidden()
+                            .controlSize(.small)
+                            .frame(maxWidth: 160)
                         }
                     }
                 }
@@ -1527,9 +1565,8 @@ public struct SettingsView: View {
 
                     Spacer().frame(height: 40)
                 }
-                .frame(maxWidth: .infinity)
-            }
-            .background(HeardTheme.Paper.bg)
+                .frame(minWidth: 500, minHeight: 500)
+        .background(HeardTheme.Paper.bg)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(HeardTheme.Paper.bg)

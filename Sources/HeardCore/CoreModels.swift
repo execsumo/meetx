@@ -18,6 +18,22 @@ public enum AppPhase: String, Codable, CaseIterable {
     }
 }
 
+public enum AppAppearance: String, Codable, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+}
+
 public enum PipelineStage: String, Codable, CaseIterable, Identifiable {
     case queued
     case preprocessing
@@ -336,6 +352,7 @@ public struct AppSettings: Codable, Equatable {
     /// over-split speakers in the Speakers tab, which is easier than recovering
     /// from a merged-embedding poisoning a profile.
     public var diarizationClusteringThreshold: Double
+    public var appearance: AppAppearance
 
     public static let `default` = AppSettings(
         userName: "",
@@ -360,7 +377,8 @@ public struct AppSettings: Codable, Equatable {
         enableTeamsDetection: true,
         enableZoomDetection: true,
         enableWebexDetection: true,
-        diarizationClusteringThreshold: 0.5
+        diarizationClusteringThreshold: 0.5,
+        appearance: .system
     )
 
     public init(
@@ -383,7 +401,8 @@ public struct AppSettings: Codable, Equatable {
         enableTeamsDetection: Bool = true,
         enableZoomDetection: Bool = true,
         enableWebexDetection: Bool = true,
-        diarizationClusteringThreshold: Double = 0.5
+        diarizationClusteringThreshold: Double = 0.5,
+        appearance: AppAppearance = .system
     ) {
         self.userName = userName
         self.launchAtLogin = launchAtLogin
@@ -405,6 +424,7 @@ public struct AppSettings: Codable, Equatable {
         self.enableZoomDetection = enableZoomDetection
         self.enableWebexDetection = enableWebexDetection
         self.diarizationClusteringThreshold = diarizationClusteringThreshold
+        self.appearance = appearance
     }
 }
 
