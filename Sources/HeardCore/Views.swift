@@ -288,13 +288,6 @@ public struct MenuBarView: View {
         self.meetingDetector = model.meetingDetector
     }
 
-    // Height available on screen below the menu bar, minus the pinned footer (~72 px) and
-    // a small margin so the panel never sits flush against the Dock or screen edge.
-    private var scrollableMaxHeight: CGFloat {
-        let screenHeight = NSScreen.main?.visibleFrame.height ?? 600
-        return max(200, screenHeight - 160)
-    }
-
     public var body: some View {
         VStack(spacing: 0) {
             // Pinned top — banners and status header always visible
@@ -363,32 +356,29 @@ public struct MenuBarView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
 
-            // Recent Transcripts — scrollable only if the list can outgrow the
-            // available space. Capped so the panel never extends past the
-            // screen edge regardless of how many jobs are present.
+            // Recent Transcripts — rendered directly (no ScrollView) so the
+            // section expands to show all rows naturally, matching the approach
+            // used for action rows above. recentTranscripts is already capped at 3.
             if !queueStore.recentTranscripts.isEmpty {
                 HeardTheme.Paper.borderSoft.frame(height: 0.5)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("Recent Transcripts")
-                            .font(.system(size: 10, weight: .bold))
-                            .kerning(0.5)
-                            .foregroundStyle(HeardTheme.Paper.mute)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 4)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Recent Transcripts")
+                        .font(.system(size: 10, weight: .bold))
+                        .kerning(0.5)
+                        .foregroundStyle(HeardTheme.Paper.mute)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 4)
 
-                        VStack(alignment: .leading, spacing: 1) {
-                            ForEach(queueStore.recentTranscripts) { job in
-                                JobRow(job: job, model: model)
-                            }
+                    VStack(alignment: .leading, spacing: 1) {
+                        ForEach(queueStore.recentTranscripts) { job in
+                            JobRow(job: job, model: model)
                         }
                     }
-                    .padding(.horizontal, 6)
-                    .padding(.bottom, 4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxHeight: scrollableMaxHeight)
+                .padding(.horizontal, 6)
+                .padding(.bottom, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             // Pinned bottom — always reachable
