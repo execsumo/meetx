@@ -1566,10 +1566,11 @@ public struct SettingsView: View {
                     Spacer().frame(height: 40)
                 }
                 .frame(minWidth: 500, minHeight: 500)
-        .background(HeardTheme.Paper.bg)
+                .background(HeardTheme.Paper.bg)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(HeardTheme.Paper.bg)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(HeardTheme.Paper.bg)
     }
 
     // MARK: Pane helpers
