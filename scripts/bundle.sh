@@ -74,9 +74,13 @@ iconutil -c icns "$REPO_ROOT/Resources/AppIcon.iconset" -o "$APP_BUNDLE/Contents
 # Copy menu bar template image (SVG; NSImage renders it sharp at any resolution)
 cp "$REPO_ROOT/Resources/MenuBarIconTemplate.svg" "$APP_BUNDLE/Contents/Resources/"
 
-# Auto-detect "Dev Cert" if no identity explicitly provided
+# Auto-detect signing identity if not explicitly provided.
+# Prefer Developer ID Application (stable TCC grants across rebuilds), fall back to Dev Cert.
 if [[ -z "$SIGN_IDENTITY" ]]; then
-    if security find-identity -v -p codesigning | grep -q '"Dev Cert"'; then
+    if security find-identity -v -p codesigning | grep -q '"Developer ID Application: Herwin Gill"'; then
+        SIGN_IDENTITY="Developer ID Application: Herwin Gill (577WHA43TF)"
+        echo "==> Using Developer ID Application cert"
+    elif security find-identity -v -p codesigning | grep -q '"Dev Cert"'; then
         SIGN_IDENTITY="Dev Cert"
         echo "==> Found 'Dev Cert' — using it for signing"
     fi
