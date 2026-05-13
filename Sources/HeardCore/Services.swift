@@ -174,8 +174,8 @@ public struct MeetingDetectionState: Equatable {
 }
 
 @MainActor
-public final class MeetingDetector {
-    public private(set) var isWatching = false
+public final class MeetingDetector: ObservableObject {
+    @Published public private(set) var isWatching = false
     private let onMeetingStarted: @MainActor (MeetingSnapshot) -> Void
     private let onMeetingEnded: @MainActor (MeetingSnapshot) -> Void
     private let enabledSources: @MainActor () -> Set<MeetingApp>
@@ -1756,6 +1756,14 @@ public final class PipelineProcessor: ObservableObject {
 
     public func runNextIfNeeded() {
         guard !isProcessing else { return }
+        // Belt-and-braces: if a previous run was cancelled mid-stage (e.g. the
+        // task tree was cancelled and `executeWithRetry` exited via
+        // `CancellationError` without updating the stage), the job stays in a
+        // non-terminal, non-queued stage forever. processingJob would keep
+        // returning it and the menu bar header would never clear. Re-queue any
+        // such orphans so they get retried; the lifetime-cap check in
+        // `executeWithRetry` still prevents infinite reruns of a broken job.
+        recoverOrphanedNonTerminalJobs()
         guard let next = queueStore.jobs.first(where: { $0.stage == .queued }) else {
             onPipelineIdle()
             return
@@ -1769,6 +1777,29 @@ public final class PipelineProcessor: ObservableObject {
                 self.isProcessing = false
                 self.clearJobState()
                 self.runNextIfNeeded()
+            }
+        }
+    }
+
+    private func recoverOrphanedNonTerminalJobs() {
+        for job in queueStore.jobs {
+            switch job.stage {
+            case .complete, .failed, .queued:
+                continue
+            case .preprocessing, .transcribing, .diarizing, .assigning:
+                var recovered = job
+                // Charge a retry so a job that gets cancelled mid-stage on every
+                // run eventually hits the lifetime cap and stops re-queueing.
+                recovered.retryCount += 1
+                if recovered.retryCount >= Self.lifetimeRetryLimit {
+                    recovered.stage = .failed
+                    recovered.error = "Job ended unexpectedly — tap Retry to try again"
+                } else {
+                    recovered.stage = .queued
+                    recovered.stageStartTime = nil
+                }
+                queueStore.update(recovered)
+                NSLog("Heard: Recovered orphaned job \(job.id) from stage \(job.stage) (retryCount=\(recovered.retryCount))")
             }
         }
     }
@@ -2232,7 +2263,13 @@ public final class PipelineProcessor: ObservableObject {
             return
         }
 
-        let diarizer = OfflineDiarizerManager()
+        // Configure clustering threshold so the user can bias toward more
+        // separations (lower) vs fewer (higher). The Speakers tab supports
+        // merging, but recovering from a merged embedding is harder, so we
+        // default to stricter than FluidAudio's 0.6.
+        let threshold = settingsStore.settings.diarizationClusteringThreshold
+        let config = OfflineDiarizerConfig(clusteringThreshold: threshold)
+        let diarizer = OfflineDiarizerManager(config: config)
         try await diarizer.prepareModels()
         appDiarization = try await diarizer.process(audio: track.samples)
 

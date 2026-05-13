@@ -160,6 +160,11 @@ public final class SettingsStore: ObservableObject {
             transcriptionModel = decoded
         }
 
+        var diarizationClusteringThreshold = base.diarizationClusteringThreshold
+        if let val = defaults.object(forKey: "diarizationClusteringThreshold") as? NSNumber {
+            diarizationClusteringThreshold = val.doubleValue
+        }
+
         settings = AppSettings(
             userName: defaults.string(forKey: "userName") ?? base.userName,
             launchAtLogin: defaults.object(forKey: "launchAtLogin") as? Bool ?? base.launchAtLogin,
@@ -178,7 +183,8 @@ public final class SettingsStore: ObservableObject {
             meetingNoteHotkey: meetingNoteHotkey,
             enableTeamsDetection: defaults.object(forKey: "enableTeamsDetection") as? Bool ?? base.enableTeamsDetection,
             enableZoomDetection: defaults.object(forKey: "enableZoomDetection") as? Bool ?? base.enableZoomDetection,
-            enableWebexDetection: defaults.object(forKey: "enableWebexDetection") as? Bool ?? base.enableWebexDetection
+            enableWebexDetection: defaults.object(forKey: "enableWebexDetection") as? Bool ?? base.enableWebexDetection,
+            diarizationClusteringThreshold: diarizationClusteringThreshold
         )
     }
 
@@ -207,6 +213,7 @@ public final class SettingsStore: ObservableObject {
         defaults.set(settings.enableTeamsDetection, forKey: "enableTeamsDetection")
         defaults.set(settings.enableZoomDetection, forKey: "enableZoomDetection")
         defaults.set(settings.enableWebexDetection, forKey: "enableWebexDetection")
+        defaults.set(settings.diarizationClusteringThreshold, forKey: "diarizationClusteringThreshold")
     }
 }
 

@@ -247,12 +247,24 @@ private struct HeroButtonStyle: ButtonStyle {
 
 public struct MenuBarView: View {
     @ObservedObject public var model: AppModel
+    // MenuBarExtra(.window) does not reliably re-render from forwarded child-store
+    // objectWillChange events, so observe each store the dropdown reads from
+    // directly. Otherwise the status header stays stuck on "Processing" after
+    // jobs finish and the Recent Transcripts list never appears.
     @ObservedObject private var settingsStore: SettingsStore
+    @ObservedObject private var queueStore: PipelineQueueStore
+    @ObservedObject private var recordingManager: RecordingManager
+    @ObservedObject private var pipelineProcessor: PipelineProcessor
+    @ObservedObject private var meetingDetector: MeetingDetector
     @Environment(\.openWindow) private var openWindow
 
     public init(model: AppModel) {
         self.model = model
         self.settingsStore = model.settingsStore
+        self.queueStore = model.queueStore
+        self.recordingManager = model.recordingManager
+        self.pipelineProcessor = model.pipelineProcessor
+        self.meetingDetector = model.meetingDetector
     }
 
     // Height available on screen below the menu bar, minus the pinned footer (~72 px) and
@@ -271,7 +283,7 @@ public struct MenuBarView: View {
             if model.dictationAXLost {
                 axLostBanner
             }
-            if model.recordingManager.appAudioTapFailed && model.recordingManager.activeSession != nil {
+            if recordingManager.appAudioTapFailed && recordingManager.activeSession != nil {
                 tapFailedBanner
             }
 
@@ -288,7 +300,7 @@ public struct MenuBarView: View {
                 VStack(spacing: 0) {
                     VStack(spacing: 1) {
                         if settingsStore.settings.developerMode {
-                            if model.recordingManager.activeSession == nil {
+                            if recordingManager.activeSession == nil {
                                 MenuBarRow(title: "Simulate Meeting", icon: "bolt.circle") {
                                     model.simulateMeeting()
                                 }
@@ -306,18 +318,18 @@ public struct MenuBarView: View {
                             }
                         }
 
-                        if model.recordingManager.activeSession == nil && !model.meetingDetector.isWatching {
+                        if recordingManager.activeSession == nil && !meetingDetector.isWatching {
                             MenuBarRow(title: "Start Recording", icon: "record.circle") {
                                 model.startManualRecording()
                             }
-                        } else if model.recordingManager.activeSession != nil && !model.meetingDetector.isWatching {
+                        } else if recordingManager.activeSession != nil && !meetingDetector.isWatching {
                             MenuBarRow(title: "Stop Recording", icon: "stop.circle") {
                                 model.stopManualRecording()
                             }
                         }
 
                         if settingsStore.settings.dictationEnabled && !model.isDictating
-                            && model.recordingManager.activeSession == nil {
+                            && recordingManager.activeSession == nil {
                             MenuBarRow(title: "Start Dictation", icon: "mic.badge.plus") {
                                 model.toggleDictation()
                             }
@@ -330,7 +342,7 @@ public struct MenuBarView: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 4)
 
-                    if !model.queueStore.recentTranscripts.isEmpty {
+                    if !queueStore.recentTranscripts.isEmpty {
                         HeardTheme.Paper.borderSoft.frame(height: 0.5)
 
                         VStack(alignment: .leading, spacing: 0) {
@@ -342,7 +354,7 @@ public struct MenuBarView: View {
                                 .padding(.vertical, 4)
 
                             VStack(alignment: .leading, spacing: 1) {
-                                ForEach(model.queueStore.recentTranscripts) { job in
+                                ForEach(queueStore.recentTranscripts) { job in
                                     JobRow(job: job, model: model)
                                 }
                             }
@@ -392,8 +404,8 @@ public struct MenuBarView: View {
 
     @ViewBuilder
     private var statusHeader: some View {
-        if let session = model.recordingManager.activeSession {
-            let tapFailed = model.recordingManager.appAudioTapFailed
+        if let session = recordingManager.activeSession {
+            let tapFailed = recordingManager.appAudioTapFailed
             StatusHeaderCard(
                 dotColor: HeardTheme.Paper.bad,
                 pulsing: true,
@@ -409,7 +421,11 @@ public struct MenuBarView: View {
                         .foregroundStyle(HeardTheme.Paper.recordingInk.opacity(0.7))
                 )
             )
-        } else if let job = model.queueStore.processingJob {
+        } else if pipelineProcessor.isProcessing, let job = queueStore.processingJob {
+            // Only show the Processing card when the processor is actually running.
+            // A non-terminal job left in the queue with no active processor (e.g. after
+            // a cancellation that didn't mark it failed) used to stick the header on
+            // "Processing" forever even though the transcript was already written.
             StatusHeaderCard(
                 dotColor: HeardTheme.Paper.warn,
                 pulsing: true,
@@ -418,7 +434,7 @@ public struct MenuBarView: View {
                 dark: false,
                 trailing: nil
             )
-        } else if model.phase == .processing {
+        } else if model.phase == .processing && pipelineProcessor.isProcessing {
             StatusHeaderCard(
                 dotColor: HeardTheme.Paper.warn,
                 pulsing: true,
@@ -439,10 +455,10 @@ public struct MenuBarView: View {
         } else {
             Button { model.toggleWatching() } label: {
                 StatusHeaderCard(
-                    dotColor: model.meetingDetector.isWatching ? HeardTheme.Paper.good : HeardTheme.Paper.warn,
+                    dotColor: meetingDetector.isWatching ? HeardTheme.Paper.good : HeardTheme.Paper.warn,
                     pulsing: false,
-                    title: model.meetingDetector.isWatching ? "Watching" : "Paused",
-                    subtitle: model.meetingDetector.isWatching ? "Waiting for meeting" : "Click to resume",
+                    title: meetingDetector.isWatching ? "Watching" : "Paused",
+                    subtitle: meetingDetector.isWatching ? "Waiting for meeting" : "Click to resume",
                     dark: false,
                     trailing: nil
                 )
@@ -456,7 +472,7 @@ public struct MenuBarView: View {
         case .queued:        return "Queued — preparing to transcribe"
         case .preprocessing: return "Preprocessing audio"
         case .transcribing:
-            if let p = model.pipelineProcessor.transcriptionProgress {
+            if let p = pipelineProcessor.transcriptionProgress {
                 return "Transcribing — \(Int(p * 100))%"
             }
             return "Transcribing"
@@ -1393,6 +1409,54 @@ public struct SettingsView: View {
                 }
             }
 
+            sectionGroup("Diarization") {
+                SettingsCard {
+                    CardRow(isLast: false) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Speaker separation")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(HeardTheme.Paper.ink)
+                                Spacer()
+                                Text(String(format: "%.2f", model.settingsStore.settings.diarizationClusteringThreshold))
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                            }
+                            HStack(spacing: 8) {
+                                Text("More speakers")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                                Slider(
+                                    value: settingsBinding(\.diarizationClusteringThreshold),
+                                    in: 0.30...0.80,
+                                    step: 0.05
+                                )
+                                Text("Fewer speakers")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(HeardTheme.Paper.mute)
+                            }
+                        }
+                    }
+                    CardRow(isLast: false) {
+                        Text("Cosine-distance threshold for clustering voice embeddings. Lower values err on the side of splitting one person across two profiles (which you can merge in the Speakers tab); higher values may collapse two voices into one (harder to recover from). Default: 0.50.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(HeardTheme.Paper.mute)
+                    }
+                    CardRow(isLast: true) {
+                        HStack {
+                            Spacer()
+                            Button("Reset to Default") {
+                                model.settingsStore.settings.diarizationClusteringThreshold =
+                                    AppSettings.default.diarizationClusteringThreshold
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(HeardTheme.Paper.accent)
+                        }
+                    }
+                }
+            }
+
             sectionGroup("Debugging") {
                 SettingsCard {
                     ToggleRow(
@@ -1922,7 +1986,7 @@ public struct SpeakerNamingView: View {
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(HeardTheme.Paper.ink)
 
-                Text("Listen to each voice clip and enter their name. Unnamed speakers will be saved with generic labels.")
+                Text("Listen to each voice clip and enter their name. If a candidate's clips are clearly two different voices, choose Multiple speakers to drop it. Unnamed speakers will be saved with generic labels.")
                     .font(.system(size: 12))
                     .foregroundStyle(HeardTheme.Paper.mute)
                     .multilineTextAlignment(.center)
@@ -2015,10 +2079,18 @@ public struct SpeakerNamingView: View {
                 .onSubmit { saveSingle(candidate) }
             }
 
-            Button("Save") { saveSingle(candidate) }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(draftText(for: candidate).isEmpty)
+            VStack(spacing: 4) {
+                Button("Save") { saveSingle(candidate) }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(draftText(for: candidate).isEmpty)
+                Button("Multiple speakers") { discardSingle(candidate) }
+                    .buttonStyle(.plain)
+                    .controlSize(.small)
+                    .font(.system(size: 10))
+                    .foregroundStyle(HeardTheme.Paper.mute)
+                    .help("Drop this candidate without saving. Use when the clips reveal that diarization collapsed two voices into one — keeps the speaker database clean and leaves the transcript labeled Speaker N.")
+            }
         }
         .padding(HeardTheme.Spacing.md)
         .background(HeardTheme.Paper.surface)
@@ -2027,6 +2099,9 @@ public struct SpeakerNamingView: View {
             RoundedRectangle(cornerRadius: HeardTheme.Radius.card)
                 .stroke(HeardTheme.Paper.border, lineWidth: 0.5)
         )
+        .contextMenu {
+            Button("Multiple speakers — discard") { discardSingle(candidate) }
+        }
     }
 
     @ViewBuilder
@@ -2131,6 +2206,12 @@ public struct SpeakerNamingView: View {
         let name = draftText(for: candidate)
         guard !name.isEmpty else { return }
         model.saveSpeakerName(candidate: candidate, name: name)
+        drafts.removeValue(forKey: candidate.id)
+    }
+
+    private func discardSingle(_ candidate: NamingCandidate) {
+        stopAudio()
+        model.discardCandidate(candidate)
         drafts.removeValue(forKey: candidate.id)
     }
 

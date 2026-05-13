@@ -329,6 +329,13 @@ public struct AppSettings: Codable, Equatable {
     public var enableZoomDetection: Bool
     /// Detect Cisco Webex meetings.
     public var enableWebexDetection: Bool
+    /// Cosine distance threshold for speaker clustering during diarization.
+    /// Lower = stricter separation (more clusters, fewer merges); higher = looser
+    /// (fewer clusters, more chance of two voices collapsing into one). FluidAudio's
+    /// default is 0.6; we bias slightly stricter so the user can always merge
+    /// over-split speakers in the Speakers tab, which is easier than recovering
+    /// from a merged-embedding poisoning a profile.
+    public var diarizationClusteringThreshold: Double
 
     public static let `default` = AppSettings(
         userName: "",
@@ -352,7 +359,8 @@ public struct AppSettings: Codable, Equatable {
         showDockIcon: false,
         enableTeamsDetection: true,
         enableZoomDetection: true,
-        enableWebexDetection: true
+        enableWebexDetection: true,
+        diarizationClusteringThreshold: 0.5
     )
 
     public init(
@@ -374,7 +382,8 @@ public struct AppSettings: Codable, Equatable {
         showDockIcon: Bool = false,
         enableTeamsDetection: Bool = true,
         enableZoomDetection: Bool = true,
-        enableWebexDetection: Bool = true
+        enableWebexDetection: Bool = true,
+        diarizationClusteringThreshold: Double = 0.5
     ) {
         self.userName = userName
         self.launchAtLogin = launchAtLogin
@@ -395,6 +404,7 @@ public struct AppSettings: Codable, Equatable {
         self.enableTeamsDetection = enableTeamsDetection
         self.enableZoomDetection = enableZoomDetection
         self.enableWebexDetection = enableWebexDetection
+        self.diarizationClusteringThreshold = diarizationClusteringThreshold
     }
 }
 
