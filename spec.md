@@ -532,7 +532,6 @@ In the Settings window, leave a grayed-out **Dictation** tab. This prevents need
 - Live captions during meetings (models stay unloaded during recording)
 - Dictation voice commands ("scratch that", "new paragraph") — deferred to v2
 - Dictation spoken punctuation ("period", "comma") — deferred to v2
-- Update checker
 - Grace period after meeting ends
 - System-wide audio capture
 - No-mic only recording mode

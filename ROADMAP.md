@@ -10,7 +10,7 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 - ~~**DMG packaging.**~~ Done — `scripts/dmg.sh` builds, signs, notarizes, and packages. v0.1.0 DMG published to GitHub Releases.
 - ~~**Homebrew Cask.**~~ Done — `brew tap execsumo/heard && brew install --cask heard` ([tap repo](https://github.com/execsumo/homebrew-heard)).
 - ~~**CI publish step.**~~ Done — on tag push, CI builds a release bundle, zips it with `ditto`, and uploads to GitHub Releases via `softprops/action-gh-release`. Notarization is stubbed out (commented step) pending Apple Developer secrets (`APPLE_ID`, `APPLE_APP_PASSWORD`, `APPLE_TEAM_ID`).
-- **Sparkle (or equivalent) update checker.** Explicitly out of scope per `spec.md`, but worth reconsidering once CI publishes releases.
+- ~~**Update checker.**~~ Done — lightweight GitHub Releases poll on startup (24h interval). Shows banner in menu bar dropdown and Settings → About when a newer version is available; links directly to the GitHub release page. No auto-install — user re-runs the DMG or `brew upgrade --cask heard`.
 
 
 ### Meeting detection & recording

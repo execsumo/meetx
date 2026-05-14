@@ -277,6 +277,7 @@ public struct MenuBarView: View {
     @ObservedObject private var recordingManager: RecordingManager
     @ObservedObject private var pipelineProcessor: PipelineProcessor
     @ObservedObject private var meetingDetector: MeetingDetector
+    @ObservedObject private var updateChecker: UpdateChecker
     @Environment(\.openWindow) private var openWindow
 
     public init(model: AppModel) {
@@ -286,6 +287,7 @@ public struct MenuBarView: View {
         self.recordingManager = model.recordingManager
         self.pipelineProcessor = model.pipelineProcessor
         self.meetingDetector = model.meetingDetector
+        self.updateChecker = model.updateChecker
     }
 
     public var body: some View {
@@ -313,6 +315,12 @@ public struct MenuBarView: View {
             // ScrollView inside MenuBarExtra(.window) caused the whole middle
             // section to collapse to zero height in some layout passes.
             VStack(spacing: 1) {
+                if let version = updateChecker.availableVersion, let url = updateChecker.releaseURL {
+                    MenuBarRow(title: "Update available — v\(version)", icon: "arrow.down.circle.fill", accent: true) {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+
                 if settingsStore.settings.developerMode {
                     if recordingManager.activeSession == nil {
                         MenuBarRow(title: "Simulate Meeting", icon: "bolt.circle") {
@@ -1540,11 +1548,46 @@ public struct SettingsView: View {
                         Text("Heard")
                             .font(.system(size: 22, weight: .semibold))
                             .foregroundStyle(HeardTheme.Paper.ink)
-                        Text("Version 0.1.0")
+                        Text("Version \(model.updateChecker.currentVersion)")
                             .font(.system(size: 11.5, design: .monospaced))
                             .foregroundStyle(HeardTheme.Paper.mute)
                     }
                     .padding(.top, 20)
+
+                    if let version = model.updateChecker.availableVersion,
+                       let url = model.updateChecker.releaseURL {
+                        Link(destination: url) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                Text("v\(version) is available — click to download")
+                            }
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(HeardTheme.Paper.accent)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(HeardTheme.Paper.accentSoft, in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 8)
+                    } else {
+                        Button {
+                            Task { await model.updateChecker.check() }
+                        } label: {
+                            HStack(spacing: 5) {
+                                if model.updateChecker.isChecking {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Image(systemName: "arrow.clockwise")
+                                }
+                                Text(model.updateChecker.isChecking ? "Checking…" : "Check for updates")
+                            }
+                            .font(.system(size: 12))
+                            .foregroundStyle(HeardTheme.Paper.mute)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(model.updateChecker.isChecking)
+                        .padding(.top, 8)
+                    }
 
                     Text("Automatic meeting detection, dual-track recording,\non-device transcription and speaker diarization.")
                         .multilineTextAlignment(.center)

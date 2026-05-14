@@ -38,6 +38,7 @@ public final class AppModel: ObservableObject {
     public let dictationManager: DictationManager
     public var hotkeyManager: HotkeyManager! = nil
     public var meetingNoteHotkeyManager: HotkeyManager! = nil
+    public let updateChecker: UpdateChecker
 
     private var cancellables = Set<AnyCancellable>()
     private var stageWatchdogTimer: Timer?
@@ -58,6 +59,7 @@ public final class AppModel: ObservableObject {
 
         let downloadManager = ModelDownloadManager(catalog: modelCatalog)
         let dictationManager = DictationManager()
+        let updateChecker = UpdateChecker()
 
         // Propagate persisted model version to managers before first use
         let savedVersion = settingsStore.settings.transcriptionModel
@@ -72,7 +74,8 @@ public final class AppModel: ObservableObject {
             permissionCenter: permissionCenter,
             recordingManager: recordingManager,
             downloadManager: downloadManager,
-            dictationManager: dictationManager
+            dictationManager: dictationManager,
+            updateChecker: updateChecker
         )
 
         // Clean stale recordings (>48h), preserving files referenced by active jobs
@@ -122,6 +125,12 @@ public final class AppModel: ObservableObject {
         // Note hotkey is always active — checks recording state when fired
         model.setupMeetingNoteHotkey()
 
+        // Defer update check so it doesn't block app startup
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            model.updateChecker.checkIfNeeded()
+        }
+
         return model
     }
 
@@ -133,7 +142,8 @@ public final class AppModel: ObservableObject {
         permissionCenter: PermissionCenter,
         recordingManager: RecordingManager,
         downloadManager: ModelDownloadManager,
-        dictationManager: DictationManager
+        dictationManager: DictationManager,
+        updateChecker: UpdateChecker
     ) {
         self.settingsStore = settingsStore
         self.speakerStore = speakerStore
@@ -143,6 +153,7 @@ public final class AppModel: ObservableObject {
         self.recordingManager = recordingManager
         self.downloadManager = downloadManager
         self.dictationManager = dictationManager
+        self.updateChecker = updateChecker
 
         self.pipelineProcessor = PipelineProcessor(
             queueStore: queueStore,
@@ -183,6 +194,9 @@ public final class AppModel: ObservableObject {
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
         settingsStore.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        updateChecker.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
