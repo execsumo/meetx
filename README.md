@@ -45,6 +45,17 @@ No cloud, no LLM, no external APIs — everything runs on-device on Apple Silico
 - **Settings window** — 880×600, five tabs: **General** (launch at login, auto-watch, developer mode, custom vocabulary, output folder, permissions), **Dictation** (enable, push-to-talk, hotkey recorder with validation feedback, model keep-alive slider, live status, show dictation HUD checkbox), **Models** (download cards with progress, pipeline keep-alive, "Unload All Models"), **Speakers** (your name, inline rename, merge, delete, search, sort, with prompts to retroactively update all past transcripts), **About**.
 - **Name Speakers window** — 560×520 standalone scene with audio-clip playback per candidate, roster-suggestion hints, save/skip, and a 120 s countdown.
 
+## Installation
+
+**Homebrew (recommended):**
+
+```bash
+brew tap execsumo/heard
+brew install --cask heard
+```
+
+**Direct download:** Grab the latest `Heard-x.x.x.dmg` from [GitHub Releases](https://github.com/execsumo/Heard/releases), open it, and drag Heard to `/Applications`.
+
 ## Requirements
 
 - macOS 15.0+
@@ -108,7 +119,11 @@ Heard/
 │   └── TestRunner.swift              # Lightweight harness — no XCTest / no Xcode
 ├── scripts/
 │   ├── bundle.sh                     # Build + bundle + (optional) sign
+│   ├── dmg.sh                        # Release pipeline: sign, notarize, staple, package DMG, print SHA256
 │   └── diagnose.swift                # Print what Heard sees from Teams & power assertions
+├── .github/
+│   └── workflows/
+│       └── ci.yml                    # Build + test on all pushes; release bundle + GitHub Release on tag push
 ├── Info.plist                        # LSUIElement, NSMicrophoneUsageDescription
 ├── Heard.entitlements                # Audio input only (no sandbox)
 ├── Package.swift                     # SPM config, FluidAudio 0.14.3+
@@ -190,6 +205,30 @@ swift run HeardTests
 **Manual smoke test:** `./scripts/bundle.sh && open build/Heard.app`, enable Developer Mode in Settings → General, then use **Simulate Meeting** from the menu bar to exercise the full flow without a real Teams call.
 
 **Diagnostics:** `swift scripts/diagnose.swift` prints what Heard sees from Teams processes and power assertions — useful for debugging detection on a specific machine.
+
+## Distribution
+
+### Release pipeline
+
+Releases are built locally with `scripts/dmg.sh`:
+
+```bash
+./scripts/dmg.sh --sign "Developer ID Application: Your Name (TEAMID)"
+```
+
+The script: builds a hardened release `.app` → notarizes it via `xcrun notarytool` → assembles a DMG with an `/Applications` symlink → signs and notarizes the DMG → prints the SHA256. The SHA256 is needed to update `Casks/heard.rb` in [execsumo/homebrew-heard](https://github.com/execsumo/homebrew-heard) after publishing the GitHub Release.
+
+Pass `--skip-notarize` for local testing without Apple Developer credentials.
+
+### CI (`.github/workflows/ci.yml`)
+
+- **All pushes / PRs:** `swift build` + `swift run HeardTests`
+- **Tag pushes (`v*`):** additionally builds a release bundle via `bundle.sh --release`, zips it with `ditto` (preserves macOS resource forks), and uploads to GitHub Releases via `softprops/action-gh-release`
+- **Notarization:** stubbed out (commented step) — enable by adding `APPLE_ID`, `APPLE_APP_PASSWORD`, `APPLE_TEAM_ID` as repository secrets
+
+### Homebrew Cask
+
+After a notarized DMG is published to GitHub Releases, update `Casks/heard.rb` in [execsumo/homebrew-heard](https://github.com/execsumo/homebrew-heard) with the new `version` and `sha256` from the `dmg.sh` output.
 
 ## References
 

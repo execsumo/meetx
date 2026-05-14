@@ -29,6 +29,8 @@ No Xcode project — this is a Swift Package Manager executable. macOS 15.0+ req
 - `Info.plist` — App bundle metadata
 - `Heard.entitlements` — Entitlements (audio input only, no sandbox)
 - `scripts/bundle.sh` — Build script for .app bundle
+- `scripts/dmg.sh` — Distribution pipeline: release build → sign → notarize → staple → DMG → SHA256
+- `.github/workflows/ci.yml` — CI: build + test on all pushes; release bundle + GitHub Release upload on tag push
 
 ## Working Rules
 
