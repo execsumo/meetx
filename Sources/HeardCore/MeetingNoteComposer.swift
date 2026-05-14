@@ -16,9 +16,11 @@ public final class MeetingNoteComposer {
     private var onSubmit: ((Date, String) -> Void)?
     private var onCancel: (() -> Void)?
 
+    /// - Parameter recordingStart: Pass the recording start time during a meeting to show an
+    ///   elapsed-time offset in the composer. Pass `nil` for standalone (out-of-meeting) notes.
     public func present(
         meetingTitle: String,
-        recordingStart: Date,
+        recordingStart: Date?,
         onSubmit: @escaping (Date, String) -> Void,
         onCancel: @escaping () -> Void = {}
     ) {
@@ -34,9 +36,11 @@ public final class MeetingNoteComposer {
         self.onSubmit = onSubmit
         self.onCancel = onCancel
 
+        let offsetSeconds: TimeInterval = recordingStart.map { max(0, now.timeIntervalSince($0)) } ?? 0
         let view = MeetingNoteComposerView(
             meetingTitle: meetingTitle,
-            offsetSecondsAtOpen: max(0, now.timeIntervalSince(recordingStart)),
+            offsetSecondsAtOpen: offsetSeconds,
+            showOffset: recordingStart != nil,
             onSubmit: { [weak self] text in self?.submit(text: text) },
             onCancel: { [weak self] in self?.cancel() }
         )
@@ -51,7 +55,7 @@ public final class MeetingNoteComposer {
             backing: .buffered,
             defer: false
         )
-        p.title = "Meeting Note"
+        p.title = "Note"
         p.level = .floating
         p.isReleasedWhenClosed = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -125,6 +129,7 @@ private final class ComposerPanelDelegate: NSObject, NSWindowDelegate {
 private struct MeetingNoteComposerView: View {
     let meetingTitle: String
     let offsetSecondsAtOpen: TimeInterval
+    let showOffset: Bool
     let onSubmit: (String) -> Void
     let onCancel: () -> Void
 
@@ -137,9 +142,11 @@ private struct MeetingNoteComposerView: View {
                 Text(headerTitle)
                     .font(.headline)
                 Spacer()
-                Text("[\(offsetSecondsAtOpen.timestampString)]")
-                    .font(.system(.callout, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                if showOffset {
+                    Text("[\(offsetSecondsAtOpen.timestampString)]")
+                        .font(.system(.callout, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
             }
 
             TextEditor(text: $text)

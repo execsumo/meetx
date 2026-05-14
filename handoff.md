@@ -66,7 +66,7 @@ The app builds cleanly with `swift build` and runs as a menu bar app on macOS 15
 - If the user submits *after* the meeting has ended, `PipelineProcessor.attachNoteToFinishedJob(at:text:)` finds the matching enqueued/processing job by wall-clock time and attaches there instead.
 - `TranscriptWriter.renderBody` interleaves notes with spoken segments by timestamp and renders them as `[mm:ss] _**Note from <userName>:** ...text..._` (italicized, distinct from `**Speaker:**` blocks). Empty `userName` falls back to `Me` — same convention as the mic-track speaker label.
 - `HotkeyManager` was refactored to support multiple hotkeys: each manager owns a unique `id` (1 = dictation, 2 = notes), all sharing one Carbon event handler that dispatches by `EventHotKeyID`.
-- Hotkey-pressed with no active recording: brief beep + log; the composer doesn't open.
+- Hotkey-pressed with no active recording: opens a standalone composer (no elapsed-time offset shown). On save, writes a Markdown file named `yyyy-MM-dd_HH-mm-ss_note.md` to the user's configured output folder. Write failures surface as `errorMessage` + a beep.
 
 ### Dictation (Fully Working)
 

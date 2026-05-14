@@ -376,20 +376,27 @@ public var filteredSpeakers: [SpeakerProfile] {
         meetingNoteHotkeyManager.activate()
     }
 
-    /// Open the in-meeting note composer. No-op (with a brief HUD blip) when
-    /// no recording is active — the feature is meaningless outside a meeting.
+    /// Open the note composer. During an active recording the note is attached to
+    /// that session and interleaved into the final transcript. Outside of a meeting
+    /// it writes a standalone Markdown file to the user's output folder.
     public func presentMeetingNoteComposer() {
-        guard let session = recordingManager.activeSession else {
-            flashNoActiveMeetingHUD()
-            return
+        if let session = recordingManager.activeSession {
+            MeetingNoteComposer.shared.present(
+                meetingTitle: session.title,
+                recordingStart: session.startTime,
+                onSubmit: { [weak self] openedAt, text in
+                    self?.commitMeetingNote(openedAt: openedAt, text: text)
+                }
+            )
+        } else {
+            MeetingNoteComposer.shared.present(
+                meetingTitle: "",
+                recordingStart: nil,
+                onSubmit: { [weak self] openedAt, text in
+                    self?.commitStandaloneNote(at: openedAt, text: text)
+                }
+            )
         }
-        MeetingNoteComposer.shared.present(
-            meetingTitle: session.title,
-            recordingStart: session.startTime,
-            onSubmit: { [weak self] openedAt, text in
-                self?.commitMeetingNote(openedAt: openedAt, text: text)
-            }
-        )
     }
 
     private func commitMeetingNote(openedAt: Date, text: String) {
@@ -407,11 +414,32 @@ public var filteredSpeakers: [SpeakerProfile] {
         }
     }
 
-    private func flashNoActiveMeetingHUD() {
-        // Lightweight, non-blocking signal. A standalone HUD class would be
-        // overkill for an edge case — a brief NSSound + log is enough.
-        NSSound.beep()
-        NSLog("Heard: Meeting-note hotkey ignored — no active recording.")
+    private func commitStandaloneNote(at date: Date, text: String) {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let timestamp = formatter.string(from: date)
+        let outputDir = URL(fileURLWithPath: settingsStore.settings.outputDirectory, isDirectory: true)
+
+        var candidate = outputDir.appendingPathComponent("\(timestamp)_note.md")
+        var suffix = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = outputDir.appendingPathComponent("\(timestamp)_note_\(suffix).md")
+            suffix += 1
+        }
+
+        let displayFormatter = DateFormatter()
+        displayFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let content = "# Note\n\n**Date:** \(displayFormatter.string(from: date))\n\n---\n\n\(text)\n"
+
+        do {
+            try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+            try content.write(to: candidate, atomically: true, encoding: .utf8)
+            NSLog("Heard: Standalone note saved to \(candidate.path)")
+        } catch {
+            NSSound.beep()
+            errorMessage = "Could not save note: \(error.localizedDescription)"
+            NSLog("Heard: Failed to save standalone note: \(error)")
+        }
     }
 
     public func setTranscriptionModel(_ version: TranscriptionModel) {

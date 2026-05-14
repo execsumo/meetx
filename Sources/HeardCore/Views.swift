@@ -1562,6 +1562,7 @@ public struct SettingsView: View {
             .background(HeardTheme.Paper.bg)
         }
     }
+    }
 
     // MARK: Pane helpers
 
