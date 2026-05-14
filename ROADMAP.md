@@ -17,7 +17,7 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 - **Audible meeting-start chime (opt-in).** A short non-intrusive sound confirms recording started. Off by default.
 
 ### Pipeline
-- **Preprocessing concurrency guard.** Both tracks are currently preprocessed concurrently in a `TaskGroup`. On machines with tight memory, this doubles the peak RAM during VAD. Expose a setting to serialize preprocessing.
+- ~~**Preprocessing concurrency guard.**~~ Done — "Low Memory Mode" toggle in Settings → Advanced → Memory serializes preprocessing to halve peak RAM (~400 MB vs ~800 MB). Off by default.
 - **Per-job log viewer.** When a job fails, the error string is short. Capture a rolling per-job log (stdout/NSLog lines) and show it in a disclosure view.
 
 ## Mid-term — within-spec enhancements
