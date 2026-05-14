@@ -1,8 +1,122 @@
-# Heard
+<p align="center">
+  <img src="Resources/AppIcon.iconset/icon_256x256@2x.png" alt="Heard app icon" width="160" />
+</p>
 
-A macOS menu bar app that automatically detects Microsoft Teams meetings, records dual-track audio (app + mic), and produces on-device transcripts with speaker diarization. Also includes a real-time dictation mode that types transcribed speech into any focused text field.
+<h1 align="center">Heard</h1>
 
-No cloud, no LLM, no external APIs — everything runs on-device on Apple Silicon.
+<p align="center">
+  <strong>Stop taking meeting notes. Get them automatically.</strong><br/>
+  Heard is a quiet macOS menu bar app that auto-detects your Microsoft Teams meetings, records them, and turns them into clean, speaker-labeled Markdown transcripts — <em>fully on-device</em>.
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#why-heard">Why Heard</a> ·
+  <a href="#a-look-inside">A look inside</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#requirements">Requirements</a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/hero.png" alt="Heard recording a Teams meeting from the macOS menu bar" width="720" />
+</p>
+
+---
+
+## Why Heard?
+
+**No cloud. No subscription. No sending your meetings to anyone's servers.**
+Every byte of audio, every transcript, every speaker embedding lives on your Mac. Heard never makes a network call to a transcription service — because there is no transcription service. It all runs locally on Apple Silicon.
+
+- **Zero‑click recording** — As soon as a Teams meeting starts, Heard starts. When the meeting ends, you have a transcript waiting in your Documents folder.
+- **Speaker-labeled transcripts** — Diarization separates each voice; once you name a speaker, Heard remembers them across every future meeting.
+- **Dual‑track audio** — Heard records the system audio (the people on the call) and your microphone as separate streams, then merges them after transcription. The result is dramatically cleaner than recording a single mixed track.
+- **Custom vocabulary** — Add product names, acronyms, or jargon and they'll come through correctly in both meeting transcripts and live dictation.
+- **Real‑time dictation, anywhere** — Press a hotkey and Heard types what you say into whatever app is focused — Notes, Slack, your IDE, anywhere.
+- **In‑meeting notes** — A second hotkey opens a quick composer. Your typed note is timestamped to the moment you started writing it and merged into the transcript chronologically.
+- **Built for macOS** — A native SwiftUI menu bar app with a calm "Paper" palette. No Electron. No tray icon misery.
+
+### How it stacks up
+
+|                              | Heard                       | Cloud meeting recorders         |
+|------------------------------|-----------------------------|---------------------------------|
+| Audio leaves your Mac        | Never                       | Always                          |
+| Works offline                | Yes                         | No                              |
+| Subscription                 | Free, open source           | $$$ / month                     |
+| Needs a meeting bot to join  | No — runs on your machine   | Yes                             |
+| Speaker memory across calls  | Yes, on-device              | Sometimes                       |
+| Transcribes in real time as you dictate | Yes               | Different product               |
+| Custom vocabulary            | Yes                         | Sometimes                       |
+
+---
+
+## A look inside
+
+### Quietly lives in your menu bar
+Heard sits in the top bar and changes its icon to tell you what it's doing — pulsing while recording, a waveform while transcribing, a calm tape icon while it waits for your next call.
+
+<p align="center">
+  <img src="docs/screenshots/menubar-dropdown.png" alt="Heard menu bar dropdown in the Watching state" width="320" />
+  &nbsp;
+  <img src="docs/screenshots/recording.png" alt="Heard menu bar dropdown in the Recording state with elapsed timer" width="320" />
+</p>
+
+### Outputs a clean, speaker-labeled Markdown transcript
+Timestamps, merged speaker blocks, and your own typed notes interleaved at the moment you wrote them.
+
+<p align="center">
+  <img src="docs/screenshots/transcript.png" alt="A finished Markdown transcript with speaker labels and timestamps" width="720" />
+</p>
+
+### Dictates into any app, in real time
+Hold `⌃⇧D` (or rebind it) and start talking. Words appear as soon as the sliding-window ASR confirms them, with filler words and "uhs" stripped automatically.
+
+<p align="center">
+  <img src="docs/screenshots/dictation-hud.png" alt="Floating dictation HUD with a live transcription being typed into a text field" width="720" />
+</p>
+
+### A native settings panel built for macOS
+Custom vocabulary, model management, speaker library, and permission status all live in a single 880 × 600 window.
+
+<p align="center">
+  <img src="docs/screenshots/settings-general.png" alt="Settings window, General tab" width="720" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/settings-models.png" alt="Settings window, Models tab" width="360" />
+  &nbsp;
+  <img src="docs/screenshots/settings-speakers.png" alt="Settings window, Speakers tab" width="360" />
+</p>
+
+### Names new speakers with one playable clip each
+The first time Heard hears someone new, it surfaces a ~10-second sample of their clearest speech and asks you who they are. After that, it remembers them.
+
+<p align="center">
+  <img src="docs/screenshots/name-speakers.png" alt="Name Speakers window with playable audio clips per candidate" width="480" />
+</p>
+
+---
+
+## Install
+
+**Homebrew (recommended):**
+
+```bash
+brew tap execsumo/heard
+brew install --cask heard
+```
+
+**Direct download:** Grab the latest `Heard-x.x.x.dmg` from [GitHub Releases](https://github.com/execsumo/Heard/releases), open it, and drag Heard to `/Applications`.
+
+After launching, grant Microphone (always required) and Accessibility (required for dictation, recommended for richer meeting metadata). Heard will guide you to the right System Settings pane from inside the app.
+
+## Requirements
+
+- macOS 15.0+
+- Apple Silicon (FluidAudio CoreML/ANE models are ARM-only)
+- [FluidAudio](https://github.com/FluidInference/FluidAudio) 0.14.3+ (resolved automatically via SPM)
+
+---
 
 ## Features
 
@@ -44,23 +158,6 @@ No cloud, no LLM, no external APIs — everything runs on-device on Apple Silico
 - **Menu bar dropdown** — 268 px wide Paper-palette panel. Current status card (dark `#2E3338` background when recording/dictating, Paper background otherwise), **Recent Meetings** list (up to 3 completed/failed jobs with click-to-open and right-click to reveal/retry/dismiss), quick actions (start dictation, open transcripts, name speakers, settings, quit), and developer-mode simulate buttons.
 - **Settings window** — 880×600, five tabs: **General** (launch at login, auto-watch, developer mode, custom vocabulary, output folder, permissions), **Dictation** (enable, push-to-talk, hotkey recorder with validation feedback, model keep-alive slider, live status, show dictation HUD checkbox), **Models** (download cards with progress, pipeline keep-alive, "Unload All Models"), **Speakers** (your name, inline rename, merge, delete, search, sort, with prompts to retroactively update all past transcripts), **About**.
 - **Name Speakers window** — 560×520 standalone scene with audio-clip playback per candidate, roster-suggestion hints, save/skip, and a 120 s countdown.
-
-## Installation
-
-**Homebrew (recommended):**
-
-```bash
-brew tap execsumo/heard
-brew install --cask heard
-```
-
-**Direct download:** Grab the latest `Heard-x.x.x.dmg` from [GitHub Releases](https://github.com/execsumo/Heard/releases), open it, and drag Heard to `/Applications`.
-
-## Requirements
-
-- macOS 15.0+
-- Apple Silicon (FluidAudio CoreML/ANE models are ARM-only)
-- [FluidAudio](https://github.com/FluidInference/FluidAudio) 0.14.3+ (resolved automatically via SPM)
 
 ## Build & Run
 
@@ -236,3 +333,4 @@ After a notarized DMG is published to GitHub Releases, update `Casks/heard.rb` i
 - [`handoff.md`](./handoff.md) — Current implementation status and known issues
 - [`ROADMAP.md`](./ROADMAP.md) — Planned improvements and stretch ideas
 - [`CLAUDE.md`](./CLAUDE.md) — Working rules for AI assistants
+- [`docs/screenshots/`](./docs/screenshots) — Where the README screenshots live, and how to capture new ones
