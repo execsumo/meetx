@@ -2047,23 +2047,29 @@ public final class PipelineProcessor: ObservableObject {
 
         guard appUsable || micUsable else { throw PipelineError.noAudioFiles }
 
-        // Preprocess both tracks concurrently on background threads
-        try await withThrowingTaskGroup(of: (String, PreprocessedTrack).self) { group in
-            if appUsable {
-                group.addTask {
-                    let track = try await AudioPreprocessor.preprocess(wavURL: job.appAudioPath)
-                    return ("app", track)
+        if settingsStore.settings.lowMemoryMode {
+            // Serialize preprocessing to halve peak RAM (~400 MB instead of ~800 MB)
+            if appUsable { appTrack = try await AudioPreprocessor.preprocess(wavURL: job.appAudioPath) }
+            if micUsable { micTrack = try await AudioPreprocessor.preprocess(wavURL: job.micAudioPath) }
+        } else {
+            // Preprocess both tracks concurrently on background threads
+            try await withThrowingTaskGroup(of: (String, PreprocessedTrack).self) { group in
+                if appUsable {
+                    group.addTask {
+                        let track = try await AudioPreprocessor.preprocess(wavURL: job.appAudioPath)
+                        return ("app", track)
+                    }
                 }
-            }
-            if micUsable {
-                group.addTask {
-                    let track = try await AudioPreprocessor.preprocess(wavURL: job.micAudioPath)
-                    return ("mic", track)
+                if micUsable {
+                    group.addTask {
+                        let track = try await AudioPreprocessor.preprocess(wavURL: job.micAudioPath)
+                        return ("mic", track)
+                    }
                 }
-            }
-            for try await (label, track) in group {
-                if label == "app" { appTrack = track }
-                else { micTrack = track }
+                for try await (label, track) in group {
+                    if label == "app" { appTrack = track }
+                    else { micTrack = track }
+                }
             }
         }
     }

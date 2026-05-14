@@ -353,6 +353,10 @@ public struct AppSettings: Codable, Equatable {
     /// from a merged-embedding poisoning a profile.
     public var diarizationClusteringThreshold: Double
     public var appearance: AppAppearance
+    /// When enabled, preprocessing runs the app and mic tracks sequentially rather than
+    /// concurrently, halving peak RAM during the VAD stage (~400 MB instead of ~800 MB).
+    /// Useful on machines with 8 GB unified memory under heavy load.
+    public var lowMemoryMode: Bool
 
     public static let `default` = AppSettings(
         userName: "",
@@ -378,7 +382,8 @@ public struct AppSettings: Codable, Equatable {
         enableZoomDetection: true,
         enableWebexDetection: true,
         diarizationClusteringThreshold: 0.5,
-        appearance: .system
+        appearance: .system,
+        lowMemoryMode: false
     )
 
     public init(
@@ -402,7 +407,8 @@ public struct AppSettings: Codable, Equatable {
         enableZoomDetection: Bool = true,
         enableWebexDetection: Bool = true,
         diarizationClusteringThreshold: Double = 0.5,
-        appearance: AppAppearance = .system
+        appearance: AppAppearance = .system,
+        lowMemoryMode: Bool = false
     ) {
         self.userName = userName
         self.launchAtLogin = launchAtLogin
@@ -425,6 +431,7 @@ public struct AppSettings: Codable, Equatable {
         self.enableWebexDetection = enableWebexDetection
         self.diarizationClusteringThreshold = diarizationClusteringThreshold
         self.appearance = appearance
+        self.lowMemoryMode = lowMemoryMode
     }
 }
 

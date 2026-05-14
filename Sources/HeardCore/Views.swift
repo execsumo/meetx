@@ -1495,6 +1495,17 @@ public struct SettingsView: View {
                 }
             }
 
+            sectionGroup("Memory") {
+                SettingsCard {
+                    ToggleRow(
+                        title: "Low Memory Mode",
+                        subtitle: "Preprocesses audio tracks one at a time instead of simultaneously. Halves peak RAM during transcription (~400 MB instead of ~800 MB). Slightly slower. Recommended on 8 GB machines.",
+                        isLast: true,
+                        isOn: settingsBinding(\.lowMemoryMode)
+                    )
+                }
+            }
+
             sectionGroup("Debugging") {
                 SettingsCard {
                     ToggleRow(
@@ -1561,7 +1572,6 @@ public struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(HeardTheme.Paper.bg)
         }
-    }
     }
 
     // MARK: Pane helpers
