@@ -39,8 +39,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }}
 
       - name: Cache SPM dependencies
         uses: actions/cache@v4
@@ -115,9 +113,12 @@ jobs:
       # (release.sh pushed it before the tag), so this is always a fast-forward.
       # [skip ci] prevents this commit from re-triggering the workflow.
       - name: Commit and push cask update
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Casks/heard.rb
           git commit -m "Update Homebrew cask to v${{ steps.meta.outputs.version }} [skip ci]"
+          git remote set-url origin "https://execsumo:${GH_PAT}@github.com/execsumo/Heard.git"
           git push origin HEAD:refs/heads/master
