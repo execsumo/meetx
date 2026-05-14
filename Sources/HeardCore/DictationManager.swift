@@ -80,6 +80,9 @@ public final class DictationManager: ObservableObject {
         // Create a fresh sliding-window manager for this session.
         // SlidingWindowAsrManager's input stream is single-use (finish() closes it),
         // so a new instance is required each time.
+        // TODO(FluidInference/FluidAudio#611): use .streaming.applying(tdtConfig: TdtConfig(blankId: modelVersion.blankId))
+        // once that PR lands. Until then, AsrManager's internal blank-token auto-adaptation
+        // keeps v2 models working despite the mismatched blankId in SlidingWindowAsrConfig.
         let mgr = SlidingWindowAsrManager(config: .streaming)
         try await mgr.loadModels(asrModels!)
 

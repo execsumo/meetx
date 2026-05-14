@@ -57,7 +57,7 @@ These stretch the architecture and deserve a spec update before landing.
 
 - **In-meeting note editing.** Today the user edits notes by opening the rendered `.md` directly. A future polish: a "Notes" disclosure on each completed job in the menu bar dropdown that lists captured notes and lets the user edit/delete before the transcript is finalized (or rewrite the `.md` if it's already been written).
 - **`Views.swift` size.** ~1.9 kLOC for all UI after the Paper design system landed. Split by tab once we're past the early iteration phase.
-- **`SlidingWindowAsrConfig` doesn't expose `TdtConfig`.** The internal `asrConfig` hardcodes `TdtConfig()` (blankId 8192 = v3 default). `AsrManager` auto-adapts the blankId when it detects a mismatch against the loaded model, so v2 models work correctly today — but if FluidAudio ever removes that adaptation, v2 dictation would silently decode incorrectly. Upstream fix: add a `tdtConfig` parameter to `SlidingWindowAsrConfig`.
+- **`SlidingWindowAsrConfig` doesn't expose `TdtConfig`.** The internal `asrConfig` hardcodes `TdtConfig()` (blankId 8192 = v3 default). `AsrManager` auto-adapts the blankId when it detects a mismatch against the loaded model, so v2 models work correctly today — but if FluidAudio ever removes that adaptation, v2 dictation would silently decode incorrectly. Bumped to FluidAudio 0.14.5. Upstream fix in review: [FluidInference/FluidAudio#611](https://github.com/FluidInference/FluidAudio/pull/611). Once merged, update `DictationManager.start()` per the TODO comment.
 
 ## Non-goals (from `spec.md`)
 
