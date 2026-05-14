@@ -350,6 +350,12 @@ public struct MenuBarView: View {
                     }
                 }
 
+                if recordingManager.activeSession != nil {
+                    MenuBarRow(title: "Add Note…", icon: "square.and.pencil") {
+                        model.presentMeetingNoteComposer()
+                    }
+                }
+
                 if settingsStore.settings.dictationEnabled && !model.isDictating
                     && recordingManager.activeSession == nil {
                     MenuBarRow(title: "Start Dictation", icon: "mic.badge.plus") {
