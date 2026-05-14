@@ -18,14 +18,20 @@ set -euo pipefail
 #   ./scripts/dmg.sh --sign "..." --output dist/
 #
 # Options:
-#   --sign ID            Developer ID Application identity (required)
-#   --notary-profile P   Keychain profile name for notarytool (default: heard-notary)
-#   --output DIR         Directory to write the final DMG (default: ./dist)
-#   --skip-notarize      Build and package without notarizing (local testing only)
+#   --sign ID              Developer ID Application identity (required)
+#   --notary-profile P     Keychain profile for notarytool (default: heard-notary; local use)
+#   --api-key-path PATH    Path to .p8 API key file (CI use; overrides --notary-profile)
+#   --api-key-id ID        App Store Connect API key ID (required with --api-key-path)
+#   --api-issuer-id UUID   App Store Connect issuer UUID (required with --api-key-path)
+#   --output DIR           Directory to write the final DMG (default: ./dist)
+#   --skip-notarize        Build and package without notarizing (local testing only)
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SIGN_IDENTITY=""
 NOTARY_PROFILE="heard-notary"
+API_KEY_PATH=""
+API_KEY_ID=""
+API_ISSUER_ID=""
 OUTPUT_DIR="$REPO_ROOT/dist"
 SKIP_NOTARIZE=0
 
@@ -33,11 +39,21 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --sign)           SIGN_IDENTITY="$2"; shift 2 ;;
         --notary-profile) NOTARY_PROFILE="$2"; shift 2 ;;
+        --api-key-path)   API_KEY_PATH="$2"; shift 2 ;;
+        --api-key-id)     API_KEY_ID="$2"; shift 2 ;;
+        --api-issuer-id)  API_ISSUER_ID="$2"; shift 2 ;;
         --output)         OUTPUT_DIR="$2"; shift 2 ;;
         --skip-notarize)  SKIP_NOTARIZE=1; shift ;;
         *)                echo "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+# Build notarytool auth flags — API key takes precedence over keychain profile
+if [[ -n "$API_KEY_PATH" ]]; then
+    NOTARY_AUTH=(--key "$API_KEY_PATH" --key-id "$API_KEY_ID" --issuer "$API_ISSUER_ID")
+else
+    NOTARY_AUTH=(--keychain-profile "$NOTARY_PROFILE")
+fi
 
 if [[ -z "$SIGN_IDENTITY" ]]; then
     echo "ERROR: --sign is required."
@@ -82,7 +98,7 @@ if [[ "$SKIP_NOTARIZE" -eq 0 ]]; then
 
     echo "==> Notarizing $APP_NAME.app (this takes ~1–2 minutes)..."
     xcrun notarytool submit "$APP_ZIP" \
-        --keychain-profile "$NOTARY_PROFILE" \
+        "${NOTARY_AUTH[@]}" \
         --wait
     rm -f "$APP_ZIP"
 
@@ -127,7 +143,7 @@ if [[ "$SKIP_NOTARIZE" -eq 0 ]]; then
     echo ""
     echo "==> Notarizing DMG (this takes ~1–2 minutes)..."
     xcrun notarytool submit "$DMG_PATH" \
-        --keychain-profile "$NOTARY_PROFILE" \
+        "${NOTARY_AUTH[@]}" \
         --wait
 
     echo "==> Stapling notarization ticket to DMG..."
