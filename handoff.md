@@ -187,7 +187,7 @@ See [`ROADMAP.md`](./ROADMAP.md) for the full list of planned improvements, orga
 - ✅ DMG packaging — `scripts/dmg.sh` (build, sign, notarize, staple, package)
 - ✅ GitHub Release — `github.com/execsumo/Heard/releases/tag/v0.1.0`
 - ✅ Homebrew Cask — `brew tap execsumo/heard && brew install --cask heard`
-- CI pipeline — `.github/workflows/ci.yml` exists (build + test); notarize/publish step not yet wired to releases
+- ✅ CI pipeline — `.github/workflows/ci.yml` builds + tests on all pushes; on tag push, builds a release bundle, zips with `ditto`, and uploads to GitHub Releases via `softprops/action-gh-release`. Notarization is stubbed (commented) pending Apple Developer secrets (`APPLE_ID`, `APPLE_APP_PASSWORD`, `APPLE_TEAM_ID`).
 
 ### 2. Known rough edges
 - Menu bar dropdown uses `.window` style and has a fixed max height — jobs list can clip when many jobs accumulate

@@ -9,7 +9,7 @@ These land inside the existing v1 scope and mostly tighten things the user alrea
 ### Distribution & install
 - ~~**DMG packaging.**~~ Done — `scripts/dmg.sh` builds, signs, notarizes, and packages. v0.1.0 DMG published to GitHub Releases.
 - ~~**Homebrew Cask.**~~ Done — `brew tap execsumo/heard && brew install --cask heard` ([tap repo](https://github.com/execsumo/homebrew-heard)).
-- **CI publish step.** `.github/workflows/ci.yml` runs build + tests. Wire it to call `dmg.sh` and upload to GitHub Releases on tag push.
+- ~~**CI publish step.**~~ Done — on tag push, CI builds a release bundle, zips it with `ditto`, and uploads to GitHub Releases via `softprops/action-gh-release`. Notarization is stubbed out (commented step) pending Apple Developer secrets (`APPLE_ID`, `APPLE_APP_PASSWORD`, `APPLE_TEAM_ID`).
 - **Sparkle (or equivalent) update checker.** Explicitly out of scope per `spec.md`, but worth reconsidering once CI publishes releases.
 
 
