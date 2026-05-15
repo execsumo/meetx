@@ -351,14 +351,22 @@ public struct MenuBarView: View {
                 }
 
                 if recordingManager.activeSession != nil {
-                    MenuBarRow(title: "Add Note…", icon: "square.and.pencil") {
+                    MenuBarRow(
+                        title: "Add Note…",
+                        icon: "square.and.pencil",
+                        hotkey: settingsStore.settings.meetingNoteHotkey.displayString
+                    ) {
                         model.presentMeetingNoteComposer()
                     }
                 }
 
                 if settingsStore.settings.dictationEnabled && !model.isDictating
                     && recordingManager.activeSession == nil {
-                    MenuBarRow(title: "Start Dictation", icon: "mic.badge.plus") {
+                    MenuBarRow(
+                        title: "Start Dictation",
+                        icon: "mic.badge.plus",
+                        hotkey: settingsStore.settings.dictationHotkey.displayString
+                    ) {
                         model.toggleDictation()
                     }
                 }
@@ -647,6 +655,7 @@ private struct MenuBarRow: View {
     let title: String
     let icon: String
     var accent: Bool = false
+    var hotkey: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -660,6 +669,11 @@ private struct MenuBarRow: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(accent ? HeardTheme.Paper.accent : HeardTheme.Paper.ink)
                 Spacer()
+                if let hotkey {
+                    Text(hotkey)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(HeardTheme.Paper.mute)
+                }
             }
             .contentShape(Rectangle())
             .padding(.horizontal, 8)
