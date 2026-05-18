@@ -345,13 +345,15 @@ public struct AppSettings: Codable, Equatable {
     public var enableZoomDetection: Bool
     /// Detect Cisco Webex meetings.
     public var enableWebexDetection: Bool
-    /// Cosine distance threshold for speaker clustering during diarization.
-    /// Lower = stricter separation (more clusters, fewer merges); higher = looser
-    /// (fewer clusters, more chance of two voices collapsing into one). FluidAudio's
-    /// default is 0.6; we bias slightly stricter so the user can always merge
-    /// over-split speakers in the Speakers tab, which is easier than recovering
-    /// from a merged-embedding poisoning a profile.
-    public var diarizationClusteringThreshold: Double
+    /// Cosine similarity threshold for speaker clustering during diarization.
+    /// FluidAudio's AHC merges two embeddings when their cosine similarity is at or
+    /// above this value, so higher = stricter separation (more clusters, fewer
+    /// merges); lower = looser (fewer clusters, more chance of two voices
+    /// collapsing into one). FluidAudio's default is 0.6; we bias slightly
+    /// stricter so the user can always merge over-split speakers in the Speakers
+    /// tab, which is easier than recovering from a merged-embedding poisoning a
+    /// profile.
+    public var diarizationClusteringSimilarity: Double
     public var appearance: AppAppearance
     /// When enabled, preprocessing runs the app and mic tracks sequentially rather than
     /// concurrently, halving peak RAM during the VAD stage (~400 MB instead of ~800 MB).
@@ -381,7 +383,7 @@ public struct AppSettings: Codable, Equatable {
         enableTeamsDetection: true,
         enableZoomDetection: true,
         enableWebexDetection: true,
-        diarizationClusteringThreshold: 0.5,
+        diarizationClusteringSimilarity: 0.65,
         appearance: .system,
         lowMemoryMode: false
     )
@@ -406,7 +408,7 @@ public struct AppSettings: Codable, Equatable {
         enableTeamsDetection: Bool = true,
         enableZoomDetection: Bool = true,
         enableWebexDetection: Bool = true,
-        diarizationClusteringThreshold: Double = 0.5,
+        diarizationClusteringSimilarity: Double = 0.65,
         appearance: AppAppearance = .system,
         lowMemoryMode: Bool = false
     ) {
@@ -429,7 +431,7 @@ public struct AppSettings: Codable, Equatable {
         self.enableTeamsDetection = enableTeamsDetection
         self.enableZoomDetection = enableZoomDetection
         self.enableWebexDetection = enableWebexDetection
-        self.diarizationClusteringThreshold = diarizationClusteringThreshold
+        self.diarizationClusteringSimilarity = diarizationClusteringSimilarity
         self.appearance = appearance
         self.lowMemoryMode = lowMemoryMode
     }

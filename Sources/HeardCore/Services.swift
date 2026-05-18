@@ -2269,12 +2269,13 @@ public final class PipelineProcessor: ObservableObject {
             return
         }
 
-        // Configure clustering threshold so the user can bias toward more
-        // separations (lower) vs fewer (higher). The Speakers tab supports
-        // merging, but recovering from a merged embedding is harder, so we
-        // default to stricter than FluidAudio's 0.6.
-        let threshold = settingsStore.settings.diarizationClusteringThreshold
-        let config = OfflineDiarizerConfig(clusteringThreshold: threshold)
+        // FluidAudio's clusteringThreshold is a cosine *similarity* (despite the
+        // name) — AHC merges when cos_sim ≥ threshold. Higher = stricter
+        // separation (more clusters); lower = more merging. The Speakers tab
+        // supports merging, but recovering from a merged embedding is harder,
+        // so we default to stricter than FluidAudio's 0.6.
+        let similarity = settingsStore.settings.diarizationClusteringSimilarity
+        let config = OfflineDiarizerConfig(clusteringThreshold: similarity)
         let diarizer = OfflineDiarizerManager(config: config)
         try await diarizer.prepareModels()
         appDiarization = try await diarizer.process(audio: track.samples)
