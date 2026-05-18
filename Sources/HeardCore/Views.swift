@@ -37,6 +37,41 @@ public extension AppAppearance {
     }
 }
 
+// MARK: - Appearance Modifier
+
+private struct AppearanceModifier: ViewModifier {
+    let appearance: AppAppearance
+    @State private var systemIsDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+
+    func body(content: Content) -> some View {
+        content
+            .preferredColorScheme(resolvedScheme)
+            .onReceive(
+                DistributedNotificationCenter.default()
+                    .publisher(for: NSNotification.Name("AppleInterfaceThemeChangedNotification"))
+            ) { _ in
+                // Short delay: effectiveAppearance may not yet reflect the change
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    systemIsDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                }
+            }
+    }
+
+    private var resolvedScheme: ColorScheme? {
+        switch appearance {
+        case .system: systemIsDark ? .dark : .light
+        case .light:  .light
+        case .dark:   .dark
+        }
+    }
+}
+
+public extension View {
+    func heardAppearance(_ appearance: AppAppearance) -> some View {
+        modifier(AppearanceModifier(appearance: appearance))
+    }
+}
+
 // MARK: - Theme
 
 enum HeardTheme {
@@ -2150,7 +2185,6 @@ public struct SpeakerNamingView: View {
         }
         .frame(width: 560)
         .background(HeardTheme.Paper.bg)
-        .preferredColorScheme(.light)
         .onAppear { startCountdown() }
         .onDisappear {
             stopAudio()

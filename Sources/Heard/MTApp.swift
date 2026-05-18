@@ -89,7 +89,7 @@ struct HeardApp: App {
     var body: some Scene {
         MenuBarExtra {
             MenuBarView(model: appModel)
-                .preferredColorScheme(appModel.settingsStore.settings.appearance.colorScheme)
+                .heardAppearance(appModel.settingsStore.settings.appearance)
         } label: {
             MenuBarIcon(model: appModel)
         }
@@ -97,7 +97,7 @@ struct HeardApp: App {
 
         Window("Heard Settings", id: "settings") {
             SettingsView(model: appModel)
-                .preferredColorScheme(appModel.settingsStore.settings.appearance.colorScheme)
+                .heardAppearance(appModel.settingsStore.settings.appearance)
                 .onAppear { WindowActivationCoordinator.begin("settings") }
                 .onDisappear { WindowActivationCoordinator.end("settings") }
         }
@@ -106,7 +106,7 @@ struct HeardApp: App {
 
         Window("Name Speakers", id: "speaker-naming") {
             SpeakerNamingView(model: appModel)
-                .preferredColorScheme(appModel.settingsStore.settings.appearance.colorScheme)
+                .heardAppearance(appModel.settingsStore.settings.appearance)
                 .onAppear { WindowActivationCoordinator.begin("speaker-naming") }
                 .onDisappear {
                     WindowActivationCoordinator.end("speaker-naming")
