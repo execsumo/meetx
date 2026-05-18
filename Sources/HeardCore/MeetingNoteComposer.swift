@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Floating composer for in-meeting notes. Hotkey opens the panel; the panel
 /// becomes key immediately so the first keystroke goes into the field. Esc
-/// cancels, Cmd+Return submits.
+/// cancels, Return submits, Cmd+Return inserts a newline.
 @MainActor
 public final class MeetingNoteComposer {
     public static let shared = MeetingNoteComposer()
@@ -159,16 +159,28 @@ private struct MeetingNoteComposerView: View {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(Color.secondary.opacity(0.3))
                 )
+                .onKeyPress(.return) { press in
+                    if press.modifiers.contains(.command) {
+                        if let tv = NSApp.keyWindow?.firstResponder as? NSTextView {
+                            tv.insertNewline(nil)
+                        }
+                        return .handled
+                    }
+                    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        return .handled
+                    }
+                    onSubmit(text)
+                    return .handled
+                }
 
             HStack(spacing: 8) {
-                Text("⌘↩ to save, Esc to cancel")
+                Text("↩ to save  ·  ⌘↩ new line  ·  Esc to cancel")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                 Spacer()
                 Button("Cancel") { onCancel() }
                     .keyboardShortcut(.cancelAction)
                 Button("Save Note") { onSubmit(text) }
-                    .keyboardShortcut(.return, modifiers: [.command])
                     .buttonStyle(.borderedProminent)
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
