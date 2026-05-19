@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Floating composer for in-meeting notes. Hotkey opens the panel; the panel
 /// becomes key immediately so the first keystroke goes into the field. Esc
-/// cancels, Cmd+Return submits.
+/// cancels, Return submits, Cmd+Return inserts a newline.
 @MainActor
 public final class MeetingNoteComposer {
     public static let shared = MeetingNoteComposer()
@@ -11,7 +11,7 @@ public final class MeetingNoteComposer {
     private var panel: KeyablePanel?
     /// Captured at the instant the panel is shown so a slow typer's note still
     /// anchors to when they reacted to what was being said, not when they hit
-    /// Cmd+Return.
+    /// Return.
     private var openedAt: Date?
     private var onSubmit: ((Date, String) -> Void)?
     private var onCancel: (() -> Void)?
@@ -134,7 +134,6 @@ private struct MeetingNoteComposerView: View {
     let onCancel: () -> Void
 
     @State private var text: String = ""
-    @FocusState private var isFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -149,42 +148,134 @@ private struct MeetingNoteComposerView: View {
                 }
             }
 
-            TextEditor(text: $text)
-                .font(.body)
-                .focused($isFocused)
-                .frame(minHeight: 96)
-                .padding(6)
-                .background(Color(nsColor: .textBackgroundColor))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.secondary.opacity(0.3))
-                )
+            NoteTextEditor(
+                text: $text,
+                onSubmit: { submitIfNotEmpty() },
+                onCancel: onCancel
+            )
+            .frame(minHeight: 96)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.secondary.opacity(0.3))
+            )
 
             HStack(spacing: 8) {
-                Text("⌘↩ to save, Esc to cancel")
+                Text("↩ to save  ·  ⌘↩ new line  ·  Esc to cancel")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                 Spacer()
                 Button("Cancel") { onCancel() }
                     .keyboardShortcut(.cancelAction)
-                Button("Save Note") { onSubmit(text) }
-                    .keyboardShortcut(.return, modifiers: [.command])
+                Button("Save Note") { submitIfNotEmpty() }
                     .buttonStyle(.borderedProminent)
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(16)
         .frame(width: 420, height: 200, alignment: .topLeading)
-        .onAppear {
-            // Defer one runloop tick so the panel is fully key before claiming
-            // first responder — without the delay the focus sometimes lands
-            // outside the editor on first present.
-            DispatchQueue.main.async { isFocused = true }
-        }
+    }
+
+    private func submitIfNotEmpty() {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        onSubmit(trimmed)
     }
 
     private var headerTitle: String {
         let trimmed = meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Note" : "Note · \(trimmed)"
+    }
+}
+
+// MARK: - NSViewRepresentable text editor
+
+/// Wraps NSTextView directly so we can intercept Return / Cmd+Return at the
+/// AppKit level. SwiftUI's `onKeyPress` never fires inside a TextEditor because
+/// the underlying NSTextView consumes Return before the SwiftUI event system
+/// sees it.
+private struct NoteTextEditor: NSViewRepresentable {
+    @Binding var text: String
+    var onSubmit: () -> Void
+    var onCancel: () -> Void
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let tv = context.coordinator.textView
+        tv.isRichText = false
+        tv.font = .systemFont(ofSize: NSFont.systemFontSize)
+        tv.isEditable = true
+        tv.isSelectable = true
+        tv.allowsUndo = true
+        tv.drawsBackground = true
+        tv.backgroundColor = .textBackgroundColor
+        tv.textContainerInset = NSSize(width: 4, height: 4)
+
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.drawsBackground = false
+        scroll.documentView = tv
+        tv.autoresizingMask = [.width]
+        return scroll
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        let tv = context.coordinator.textView
+        if tv.string != text {
+            tv.string = text
+        }
+        context.coordinator.onSubmit = onSubmit
+        context.coordinator.onCancel = onCancel
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        let textView = NoteNSTextView()
+        var text: Binding<String>
+        var onSubmit: () -> Void = {}
+        var onCancel: () -> Void = {}
+
+        init(text: Binding<String>) {
+            self.text = text
+            super.init()
+            textView.delegate = self
+            textView.onReturn = { [weak self] in self?.onSubmit() }
+            textView.onEscape = { [weak self] in self?.onCancel() }
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let tv = notification.object as? NSTextView else { return }
+            text.wrappedValue = tv.string
+        }
+    }
+}
+
+/// NSTextView subclass that routes Return → submit and Cmd+Return → newline.
+private final class NoteNSTextView: NSTextView {
+    var onReturn: (() -> Void)?
+    var onEscape: (() -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // Grab first-responder as soon as the view is in a key window so the
+        // first keystroke goes into the text field without a manual click.
+        if let w = window, w.isKeyWindow {
+            w.makeFirstResponder(self)
+        }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        switch event.keyCode {
+        case 36: // Return
+            if event.modifierFlags.contains(.command) {
+                insertNewline(nil)
+            } else {
+                onReturn?()
+            }
+        case 53: // Escape
+            onEscape?()
+        default:
+            super.keyDown(with: event)
+        }
     }
 }
