@@ -60,7 +60,7 @@ The app builds cleanly with `swift build` and runs as a menu bar app on macOS 15
 
 ### In-Meeting Notes
 - During an active recording, the user can press a global hotkey (default Ctrl+Shift+N, configurable in Settings → General → Meeting Notes) to open a small floating composer panel.
-- Composer is an `NSPanel` subclass overriding `canBecomeKey` so the text editor takes focus immediately; first keystroke goes into the field. Esc cancels, Cmd+Return saves.
+- Composer is an `NSPanel` subclass overriding `canBecomeKey` so the text editor takes focus immediately; first keystroke goes into the field. Return saves, Cmd+Return inserts a newline, Esc cancels. The text field is a custom `NSViewRepresentable` (`NoteTextEditor`/`NoteNSTextView`) that intercepts key events at the AppKit level — SwiftUI's `onKeyPress` is not used because `TextEditor`'s underlying `NSTextView` consumes Return before SwiftUI sees it.
 - The note's recording-relative timestamp is captured at panel-open time (not submit time), so a slow typer's note still anchors to when they reacted.
 - Notes are stored on `RecordingSession.notes` while the meeting is in progress; carried into the `PipelineJob` when recording stops; persisted in `pipeline_queue.json` (with backwards-compat decoding for pre-feature queue files).
 - If the user submits *after* the meeting has ended, `PipelineProcessor.attachNoteToFinishedJob(at:text:)` finds the matching enqueued/processing job by wall-clock time and attaches there instead.
