@@ -1519,27 +1519,27 @@ public struct SettingsView: View {
                                     .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(HeardTheme.Paper.ink)
                                 Spacer()
-                                Text(String(format: "%.2f", model.settingsStore.settings.diarizationClusteringThreshold))
+                                Text(String(format: "%.2f", model.settingsStore.settings.diarizationClusteringSimilarity))
                                     .font(.system(size: 12, design: .monospaced))
                                     .foregroundStyle(HeardTheme.Paper.mute)
                             }
                             HStack(spacing: 8) {
-                                Text("More speakers")
+                                Text("Fewer speakers")
                                     .font(.system(size: 10))
                                     .foregroundStyle(HeardTheme.Paper.mute)
                                 Slider(
-                                    value: settingsBinding(\.diarizationClusteringThreshold),
-                                    in: 0.30...0.80,
+                                    value: settingsBinding(\.diarizationClusteringSimilarity),
+                                    in: 0.40...0.85,
                                     step: 0.05
                                 )
-                                Text("Fewer speakers")
+                                Text("More speakers")
                                     .font(.system(size: 10))
                                     .foregroundStyle(HeardTheme.Paper.mute)
                             }
                         }
                     }
                     CardRow(isLast: false) {
-                        Text("Cosine-distance threshold for clustering voice embeddings. Lower values err on the side of splitting one person across two profiles (which you can merge in the Speakers tab); higher values may collapse two voices into one (harder to recover from). Default: 0.50.")
+                        Text("Cosine-similarity threshold for clustering voice embeddings. Higher values err on the side of splitting one person across two profiles (which you can merge in the Speakers tab); lower values may collapse two voices into one (harder to recover from). Default: 0.65.")
                             .font(.system(size: 11))
                             .foregroundStyle(HeardTheme.Paper.mute)
                     }
@@ -1547,8 +1547,8 @@ public struct SettingsView: View {
                         HStack {
                             Spacer()
                             Button("Reset to Default") {
-                                model.settingsStore.settings.diarizationClusteringThreshold =
-                                    AppSettings.default.diarizationClusteringThreshold
+                                model.settingsStore.settings.diarizationClusteringSimilarity =
+                                    AppSettings.default.diarizationClusteringSimilarity
                             }
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .medium))

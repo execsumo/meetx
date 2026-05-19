@@ -160,9 +160,9 @@ public final class SettingsStore: ObservableObject {
             transcriptionModel = decoded
         }
 
-        var diarizationClusteringThreshold = base.diarizationClusteringThreshold
-        if let val = defaults.object(forKey: "diarizationClusteringThreshold") as? NSNumber {
-            diarizationClusteringThreshold = val.doubleValue
+        var diarizationClusteringSimilarity = base.diarizationClusteringSimilarity
+        if let val = defaults.object(forKey: "diarizationClusteringSimilarity") as? NSNumber {
+            diarizationClusteringSimilarity = val.doubleValue
         }
 
         settings = AppSettings(
@@ -184,7 +184,7 @@ public final class SettingsStore: ObservableObject {
             enableTeamsDetection: defaults.object(forKey: "enableTeamsDetection") as? Bool ?? base.enableTeamsDetection,
             enableZoomDetection: defaults.object(forKey: "enableZoomDetection") as? Bool ?? base.enableZoomDetection,
             enableWebexDetection: defaults.object(forKey: "enableWebexDetection") as? Bool ?? base.enableWebexDetection,
-            diarizationClusteringThreshold: diarizationClusteringThreshold
+            diarizationClusteringSimilarity: diarizationClusteringSimilarity
         )
     }
 
@@ -213,7 +213,7 @@ public final class SettingsStore: ObservableObject {
         defaults.set(settings.enableTeamsDetection, forKey: "enableTeamsDetection")
         defaults.set(settings.enableZoomDetection, forKey: "enableZoomDetection")
         defaults.set(settings.enableWebexDetection, forKey: "enableWebexDetection")
-        defaults.set(settings.diarizationClusteringThreshold, forKey: "diarizationClusteringThreshold")
+        defaults.set(settings.diarizationClusteringSimilarity, forKey: "diarizationClusteringSimilarity")
     }
 }
 
